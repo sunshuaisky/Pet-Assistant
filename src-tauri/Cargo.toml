@@ -1,0 +1,17 @@
+[package]
+name = "phoenix-pet-ping-island"
+version = "0.1.0"
+description = "A Tauri recreation of Ping Island"
+authors = ["phoenixicarus"]
+edition = "2021"
+default-run = "phoenix-pet-ping-island"
+
+[build-dependencies]
+tauri-build = { version = "2.6.0", features = [] }
+
+[dependencies]
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.0", features = ["protocol-asset", "macos-private-api", "tray-icon"] }
+tauri-plugin-opener = "2.5.3"

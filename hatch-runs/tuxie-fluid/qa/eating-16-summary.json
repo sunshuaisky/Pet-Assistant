@@ -1,0 +1,201 @@
+{
+  "ok": true,
+  "label": "eating",
+  "source": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/generated/eating-16-v2-source.png",
+  "frames": 16,
+  "method": "grid:2x8",
+  "chroma_key": {
+    "rgb": [
+      0,
+      255,
+      255
+    ],
+    "threshold": 120.0
+  },
+  "empty_frames": [],
+  "outputs": {
+    "frames": [
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/00.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/01.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/02.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/03.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/04.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/05.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/06.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/07.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/08.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/09.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/10.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/11.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/12.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/13.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/14.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/eating-16/15.png"
+    ],
+    "png": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/eating-16.png",
+    "webp": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/eating-16.webp",
+    "contact_sheet": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/qa/eating-16-contact.png"
+  },
+  "metrics": [
+    {
+      "index": 0,
+      "bbox": [
+        5,
+        6,
+        187,
+        201
+      ],
+      "alpha_pixels": 24664
+    },
+    {
+      "index": 1,
+      "bbox": [
+        5,
+        25,
+        187,
+        182
+      ],
+      "alpha_pixels": 15985
+    },
+    {
+      "index": 2,
+      "bbox": [
+        5,
+        36,
+        187,
+        172
+      ],
+      "alpha_pixels": 15839
+    },
+    {
+      "index": 3,
+      "bbox": [
+        5,
+        39,
+        187,
+        168
+      ],
+      "alpha_pixels": 14736
+    },
+    {
+      "index": 4,
+      "bbox": [
+        5,
+        43,
+        187,
+        165
+      ],
+      "alpha_pixels": 14204
+    },
+    {
+      "index": 5,
+      "bbox": [
+        5,
+        43,
+        187,
+        164
+      ],
+      "alpha_pixels": 13749
+    },
+    {
+      "index": 6,
+      "bbox": [
+        5,
+        30,
+        187,
+        178
+      ],
+      "alpha_pixels": 15449
+    },
+    {
+      "index": 7,
+      "bbox": [
+        5,
+        19,
+        187,
+        188
+      ],
+      "alpha_pixels": 17931
+    },
+    {
+      "index": 8,
+      "bbox": [
+        5,
+        12,
+        187,
+        195
+      ],
+      "alpha_pixels": 24792
+    },
+    {
+      "index": 9,
+      "bbox": [
+        5,
+        39,
+        187,
+        169
+      ],
+      "alpha_pixels": 14340
+    },
+    {
+      "index": 10,
+      "bbox": [
+        5,
+        42,
+        187,
+        165
+      ],
+      "alpha_pixels": 14201
+    },
+    {
+      "index": 11,
+      "bbox": [
+        5,
+        41,
+        187,
+        167
+      ],
+      "alpha_pixels": 14286
+    },
+    {
+      "index": 12,
+      "bbox": [
+        5,
+        41,
+        187,
+        167
+      ],
+      "alpha_pixels": 14744
+    },
+    {
+      "index": 13,
+      "bbox": [
+        5,
+        28,
+        187,
+        179
+      ],
+      "alpha_pixels": 15292
+    },
+    {
+      "index": 14,
+      "bbox": [
+        5,
+        32,
+        187,
+        176
+      ],
+      "alpha_pixels": 14991
+    },
+    {
+      "index": 15,
+      "bbox": [
+        5,
+        10,
+        187,
+        198
+      ],
+      "alpha_pixels": 23068
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "ok": true,
+  "label": "play-wand",
+  "source": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/generated/play-wand-16-v2-source.png",
+  "frames": 16,
+  "method": "grid:2x8",
+  "chroma_key": {
+    "rgb": [
+      0,
+      255,
+      255
+    ],
+    "threshold": 120.0
+  },
+  "empty_frames": [],
+  "outputs": {
+    "frames": [
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/00.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/01.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/02.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/03.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/04.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/05.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/06.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/07.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/08.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/09.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/10.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/11.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/12.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/13.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/14.png",
+      "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/frames/play-wand-16/15.png"
+    ],
+    "png": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/play-wand-16.png",
+    "webp": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/play-wand-16.webp",
+    "contact_sheet": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/qa/play-wand-16-contact.png"
+  },
+  "metrics": [
+    {
+      "index": 0,
+      "bbox": [
+        5,
+        12,
+        187,
+        196
+      ],
+      "alpha_pixels": 18228
+    },
+    {
+      "index": 1,
+      "bbox": [
+        5,
+        26,
+        187,
+        181
+      ],
+      "alpha_pixels": 15705
+    },
+    {
+      "index": 2,
+      "bbox": [
+        5,
+        40,
+        187,
+        168
+      ],
+      "alpha_pixels": 12354
+    },
+    {
+      "index": 3,
+      "bbox": [
+        5,
+        30,
+        187,
+        177
+      ],
+      "alpha_pixels": 15150
+    },
+    {
+      "index": 4,
+      "bbox": [
+        5,
+        38,
+        187,
+        170
+      ],
+      "alpha_pixels": 12717
+    },
+    {
+      "index": 5,
+      "bbox": [
+        5,
+        43,
+        187,
+        164
+      ],
+      "alpha_pixels": 12200
+    },
+    {
+      "index": 6,
+      "bbox": [
+        5,
+        5,
+        186,
+        203
+      ],
+      "alpha_pixels": 18583
+    },
+    {
+      "index": 7,
+      "bbox": [
+        25,
+        5,
+        167,
+        203
+      ],
+      "alpha_pixels": 15297
+    },
+    {
+      "index": 8,
+      "bbox": [
+        22,
+        5,
+        170,
+        203
+      ],
+      "alpha_pixels": 15192
+    },
+    {
+      "index": 9,
+      "bbox": [
+        5,
+        16,
+        187,
+        191
+      ],
+      "alpha_pixels": 19885
+    },
+    {
+      "index": 10,
+      "bbox": [
+        5,
+        32,
+        187,
+        176
+      ],
+      "alpha_pixels": 15545
+    },
+    {
+      "index": 11,
+      "bbox": [
+        5,
+        37,
+        187,
+        171
+      ],
+      "alpha_pixels": 14922
+    },
+    {
+      "index": 12,
+      "bbox": [
+        5,
+        8,
+        187,
+        199
+      ],
+      "alpha_pixels": 19108
+    },
+    {
+      "index": 13,
+      "bbox": [
+        5,
+        15,
+        187,
+        192
+      ],
+      "alpha_pixels": 17643
+    },
+    {
+      "index": 14,
+      "bbox": [
+        5,
+        7,
+        187,
+        200
+      ],
+      "alpha_pixels": 18868
+    },
+    {
+      "index": 15,
+      "bbox": [
+        5,
+        11,
+        187,
+        197
+      ],
+      "alpha_pixels": 18431
+    }
+  ]
+}

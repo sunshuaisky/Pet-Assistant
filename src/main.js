@@ -1,0 +1,1600 @@
+import "./styles.css";
+import tuxieEating16 from "./assets/pets/tuxie/eating-16.webp";
+import tuxiePlayBall16 from "./assets/pets/tuxie/play-ball-16.webp";
+import tuxiePlayWand16 from "./assets/pets/tuxie/play-wand-16.webp";
+import tuxieSleeping16 from "./assets/pets/tuxie/sleeping-16.webp";
+import tuxieSpritesheet from "./assets/pets/tuxie/spritesheet.webp";
+
+const invoke = window.__TAURI__?.core?.invoke;
+const convertFileSrc = window.__TAURI__?.core?.convertFileSrc;
+const listen = window.__TAURI__?.event?.listen;
+const tauriWindowApi = window.__TAURI__?.window;
+const appWindow = tauriWindowApi?.getCurrentWindow?.();
+
+const providerTitles = {
+  claude: "Claude Code",
+  codex: "Codex",
+  "codex-cli": "Codex CLI",
+  cursor: "Cursor",
+  gemini: "Gemini CLI",
+  opencode: "OpenCode",
+  qoder: "Qoder",
+  qwen: "Qwen Code",
+};
+
+const providerInitials = {
+  claude: "CC",
+  codex: "CX",
+  "codex-cli": "CLI",
+  cursor: "CU",
+  gemini: "G",
+  opencode: "OC",
+  qoder: "QD",
+  qwen: "QW",
+};
+
+const fallbackSessions = [];
+
+const fallbackIntegrations = [
+  {
+    id: "codex",
+    name: "Codex",
+    kind: "桌面应用",
+    status: "preview",
+    message: "浏览器预览无法检测本机集成",
+    installed: false,
+    running: false,
+    focusable: true,
+  },
+];
+
+const SPRITE_COLUMNS = 8;
+const SPRITE_ROWS = 9;
+const PET_WIDTH = 128;
+const PET_HEIGHT = 139;
+const PET_MARGIN = 56;
+const PET_DRAG_HOLD_MS = 180;
+const PET_DRAG_DISTANCE = 7;
+const PASS_THROUGH_POLL_MS = 90;
+const SESSION_POLL_MS = 1000;
+const SESSION_HISTORY_POLL_MS = 2500;
+const SETTINGS_STORAGE_KEY = "phoenix-pet-settings";
+
+const builtInPets = [
+  {
+    id: "tuxie",
+    name: "Tuxie",
+    kind: "atlas",
+    source: "built-in",
+    src: tuxieSpritesheet,
+    columns: SPRITE_COLUMNS,
+    rows: SPRITE_ROWS,
+    width: PET_WIDTH,
+    height: PET_HEIGHT,
+  },
+];
+
+const defaultUserSettings = {
+  showBadge: true,
+  showStatus: true,
+  currentPetId: "tuxie",
+  importedPets: [],
+  renamedPets: {},
+};
+
+const settingSections = [
+  { id: "display", title: "显示", subtitle: "宠物标记与位置" },
+  { id: "pet", title: "宠物", subtitle: "导入与切换" },
+  { id: "integrations", title: "集成", subtitle: "工具检测与跳转" },
+];
+
+const petAnimations = {
+  "running-right": { row: 1, frames: 8, durations: [120, 120, 120, 120, 120, 120, 120, 220], label: "向右跑" },
+  "running-left": { row: 2, frames: 8, durations: [120, 120, 120, 120, 120, 120, 120, 220], label: "向左跑" },
+  "play-wand": {
+    row: 0,
+    frames: 16,
+    columns: 16,
+    rows: 1,
+    builtInSrc: tuxiePlayWand16,
+    fallbackRow: 3,
+    fallbackFrames: 8,
+    fallbackDurations: [150, 145, 145, 150, 155, 155, 150, 220],
+    durations: [140, 125, 115, 115, 120, 125, 135, 140, 140, 135, 125, 120, 125, 135, 145, 170],
+    loops: 3,
+    label: "玩逗猫棒",
+  },
+  "play-ball": {
+    row: 0,
+    frames: 16,
+    columns: 16,
+    rows: 1,
+    builtInSrc: tuxiePlayBall16,
+    fallbackRow: 4,
+    fallbackFrames: 8,
+    fallbackDurations: [150, 145, 145, 150, 155, 155, 150, 210],
+    durations: [125, 110, 110, 105, 105, 110, 115, 115, 115, 115, 115, 120, 125, 135, 145, 165],
+    loops: 3,
+    label: "玩球",
+  },
+  eating: {
+    row: 0,
+    frames: 16,
+    columns: 16,
+    rows: 1,
+    builtInSrc: tuxieEating16,
+    fallbackRow: 6,
+    fallbackFrames: 8,
+    fallbackDurations: [170, 160, 160, 170, 170, 180, 165, 230],
+    durations: [150, 135, 125, 120, 125, 130, 140, 150, 135, 125, 125, 135, 150, 165, 175, 190],
+    loops: 3,
+    label: "吃饭",
+  },
+  sleeping: {
+    row: 0,
+    frames: 16,
+    columns: 16,
+    rows: 1,
+    builtInSrc: tuxieSleeping16,
+    fallbackRow: 5,
+    fallbackFrames: 8,
+    fallbackDurations: [260, 250, 250, 260, 270, 270, 260, 520],
+    durations: [360, 340, 330, 330, 340, 360, 380, 390, 390, 380, 360, 345, 335, 335, 350, 430],
+    label: "睡觉",
+  },
+  thinking: {
+    row: 8,
+    frames: 6,
+    sequence: [0, 1, 2, 3, 4, 5, 4, 3, 2, 1],
+    durations: [190, 180, 180, 190, 200, 300, 200, 190, 180, 190],
+    label: "思考",
+  },
+};
+
+const closedPetSequence = ["play-wand", "play-ball", "eating", "sleeping"];
+
+function defaultPetPosition() {
+  return {
+    x: Math.max(PET_MARGIN, window.innerWidth - PET_WIDTH - PET_MARGIN),
+    y: Math.max(PET_MARGIN, window.innerHeight - PET_HEIGHT - PET_MARGIN),
+  };
+}
+
+function clampPetPosition(position) {
+  return {
+    x: Math.min(Math.max(PET_MARGIN, position.x), Math.max(PET_MARGIN, window.innerWidth - PET_WIDTH - PET_MARGIN)),
+    y: Math.min(Math.max(PET_MARGIN, position.y), Math.max(PET_MARGIN, window.innerHeight - PET_HEIGHT - PET_MARGIN)),
+  };
+}
+
+function loadPetPosition() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("phoenix-pet-position") || "null");
+    if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) return clampPetPosition(saved);
+  } catch {
+    // Ignore invalid persisted state.
+  }
+  return defaultPetPosition();
+}
+
+function savePetPosition(position) {
+  localStorage.setItem("phoenix-pet-position", JSON.stringify(clampPetPosition(position)));
+}
+
+function loadUserSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "null");
+    return normalizeUserSettings({ ...defaultUserSettings, ...saved });
+  } catch {
+    return normalizeUserSettings({ ...defaultUserSettings });
+  }
+}
+
+function saveUserSettings() {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.userSettings));
+}
+
+function normalizeUserSettings(settings) {
+  return {
+    ...settings,
+    currentPetId: settings.currentPetId || "tuxie",
+    importedPets: Array.isArray(settings.importedPets)
+      ? settings.importedPets.map(normalizePet).filter(Boolean)
+      : [],
+    renamedPets: settings.renamedPets && typeof settings.renamedPets === "object" ? settings.renamedPets : {},
+  };
+}
+
+function normalizePet(pet) {
+  if (!pet?.id) return null;
+  const kind = pet.kind === "atlas" ? "atlas" : "image";
+  const src = pet.src || "";
+  const assetPath = pet.assetPath || "";
+  if (!src && !assetPath) return null;
+
+  return {
+    id: pet.id,
+    name: pet.name || "Imported Pet",
+    kind,
+    source: pet.source || "imported",
+    src,
+    assetPath,
+    columns: Number(pet.columns) || SPRITE_COLUMNS,
+    rows: Number(pet.rows) || SPRITE_ROWS,
+    width: Number(pet.width) || PET_WIDTH,
+    height: Number(pet.height) || PET_HEIGHT,
+  };
+}
+
+function petLibrary() {
+  return [...builtInPets, ...state.userSettings.importedPets].map((pet) => ({
+    ...pet,
+    name: state.userSettings.renamedPets[pet.id] || pet.name,
+  }));
+}
+
+function currentPet() {
+  return petLibrary().find((pet) => pet.id === state.userSettings.currentPetId) || builtInPets[0];
+}
+
+function rawPetById(id) {
+  return [...builtInPets, ...state.userSettings.importedPets].find((pet) => pet.id === id);
+}
+
+function setPetName(id, name) {
+  const pet = rawPetById(id);
+  const trimmedName = name.trim().replace(/\s+/g, " ").slice(0, 32);
+  if (!pet || !trimmedName) return false;
+
+  if (trimmedName === pet.name) {
+    delete state.userSettings.renamedPets[id];
+  } else {
+    state.userSettings.renamedPets[id] = trimmedName;
+  }
+
+  return true;
+}
+
+function providerName(provider) {
+  return providerTitles[provider] ?? provider;
+}
+
+function isGenericSessionTitle(session) {
+  const title = String(session.title ?? "").trim().toLowerCase();
+  const providerLabel = providerName(session.provider).toLowerCase();
+  return [
+    "codex session",
+    "codex 会话",
+    "claude session",
+    "claude 会话",
+    "claude code session",
+    "claude code 会话",
+    `${providerLabel} session`,
+    `${providerLabel} 会话`,
+  ].includes(title);
+}
+
+function isGenericSessionMessage(session) {
+  const message = String(session.message ?? "").trim().toLowerCase();
+  return !message || message === `${session.provider} event: progress` || message === `${session.provider} event: completed`;
+}
+
+function projectNameFromCwd(cwd) {
+  const normalized = String(cwd ?? "").trim().replace(/\/+$/, "");
+  if (!normalized) return "";
+  return normalized.split("/").filter(Boolean).pop() || normalized;
+}
+
+function sessionDisplayTitle(session) {
+  const cwdProject = projectNameFromCwd(session.cwd);
+  if (cwdProject) return cwdProject;
+
+  const project = String(session.project ?? "").trim();
+  if (project && project !== "终端") return project;
+
+  return `${providerName(session.provider)} 会话`;
+}
+
+function sessionSubtitle(session) {
+  const title = sessionDisplayTitle(session);
+  return [session.kind, session.updatedAt, session.message]
+    .filter((value) => value && value !== title)
+    .join(" · ");
+}
+
+function renderProviderMark(provider) {
+  const title = providerName(provider);
+  const initials = providerInitials[provider] || title.slice(0, 2).toUpperCase();
+  return `<span class="provider-mark" aria-hidden="true">${escapeHtml(initials)}</span>`;
+}
+
+function commitPetRename(id, value) {
+  if (!setPetName(id, value)) {
+    state.toast = "名称不能为空";
+    return false;
+  }
+
+  const pet = petLibrary().find((item) => item.id === id);
+  state.renamingPetId = "";
+  state.toast = pet ? `已改名为 ${pet.name}` : "已保存宠物名称";
+  saveUserSettings();
+  return true;
+}
+
+function petNameInput(id) {
+  return Array.from(document.querySelectorAll("[data-pet-name-input]")).find(
+    (input) => input.dataset.petNameInput === id,
+  );
+}
+
+function petAssetSource(pet) {
+  if (pet.src) return pet.src;
+  if (pet.assetPath && convertFileSrc) return convertFileSrc(pet.assetPath);
+  return pet.assetPath || "";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => (
+    {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[character]
+  ));
+}
+
+const state = {
+  open: false,
+  route: "sessions",
+  selectedId: "codex-local",
+  selectedSetting: "display",
+  toast: "",
+  sessions: fallbackSessions,
+  integrations: fallbackIntegrations,
+  historyBySessionId: {},
+  historyLoadingId: "",
+  petPosition: loadPetPosition(),
+  userSettings: loadUserSettings(),
+  petAction: "sleeping",
+  dragAction: null,
+  actionMenuOpen: false,
+  renamingPetId: "",
+};
+
+function phaseLabel(phase) {
+  return {
+    approval: "待审批",
+    input: "待输入",
+    processing: "运行中",
+    completed: "已完成",
+    failed: "已失败",
+    archived: "已归档",
+    waiting: "未运行",
+  }[phase] ?? "空闲";
+}
+
+function integrationStatusLabel(status) {
+  return {
+    running: "运行中",
+    installed: "已安装，未运行",
+    missing: "未安装",
+    preview: "预览模式",
+  }[status] ?? status;
+}
+
+function activeSession() {
+  return (
+    state.sessions.find((session) => session.needsApproval || session.phase === "approval") ||
+    state.sessions.find((session) => session.needsInput || session.phase === "input") ||
+    state.sessions.find((session) => session.phase === "processing") ||
+    state.sessions[0] ||
+    {
+      id: "no-active-integration",
+      provider: "codex",
+      title: "未检测到运行中的工具",
+      project: "集成",
+      kind: "未知",
+      phase: "waiting",
+      message: "请在集成设置中刷新状态，或先启动 Codex / Claude Code / Gemini 等工具",
+      updatedAt: "刚刚",
+      source: "empty",
+      needsApproval: false,
+      needsInput: false,
+    }
+  );
+}
+
+function selectedSession() {
+  return state.sessions.find((session) => session.id === state.selectedId) || activeSession();
+}
+
+function integrationForSession(session) {
+  if (session.provider === "codex" && String(session.kind || "").includes("CLI")) {
+    return state.integrations.find((integration) => integration.id === "codex-cli");
+  }
+
+  return state.integrations.find((integration) => integration.id === session.provider);
+}
+
+function effectiveIntegrationForSession(session) {
+  const integration = integrationForSession(session);
+  if (session.source === "hook" && String(session.kind || "").includes("CLI")) {
+    return integration?.kind === "CLI" ? integration : undefined;
+  }
+  return integration;
+}
+
+function sameData(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function setSessions(sessions, useFallback = false) {
+  const previousSessions = state.sessions;
+  const previousSelectedId = state.selectedId;
+  state.sessions = sessions.length || !useFallback ? sessions : fallbackSessions;
+  if (!state.sessions.some((session) => session.id === state.selectedId)) {
+    state.selectedId = activeSession().id;
+  }
+  return !sameData(previousSessions, state.sessions) || previousSelectedId !== state.selectedId;
+}
+
+function setIntegrations(integrations, useFallback = false) {
+  const previousIntegrations = state.integrations;
+  state.integrations = integrations.length || !useFallback ? integrations : fallbackIntegrations;
+  return !sameData(previousIntegrations, state.integrations);
+}
+
+async function refreshSessions() {
+  let changed = false;
+  if (!invoke) {
+    changed = setSessions(fallbackSessions, true);
+    if (changed || !hasRendered) render();
+    return;
+  }
+
+  try {
+    changed = setSessions(await invoke("list_sessions"));
+  } catch {
+    changed = setSessions(fallbackSessions, true);
+  }
+  if (changed || !hasRendered) render();
+  refreshSessionHistory(changed);
+}
+
+async function refreshSessionHistory(force = false) {
+  if (!invoke) return;
+
+  const session = selectedSession();
+  if (!session?.id || session.source === "empty") return;
+  if (!force && state.historyLoadingId === session.id) return;
+
+  state.historyLoadingId = session.id;
+  try {
+    const history = await invoke("list_session_history", {
+      id: session.id,
+      sessionId: session.sessionId,
+      cwd: session.cwd,
+    });
+    if (state.historyLoadingId !== session.id) return;
+
+    const previous = state.historyBySessionId[session.id] || [];
+    state.historyBySessionId = {
+      ...state.historyBySessionId,
+      [session.id]: Array.isArray(history) ? history : [],
+    };
+    if (!sameData(previous, state.historyBySessionId[session.id])) render();
+  } catch {
+    if (state.historyLoadingId === session.id) {
+      state.historyBySessionId = {
+        ...state.historyBySessionId,
+        [session.id]: [],
+      };
+    }
+  } finally {
+    if (state.historyLoadingId === session.id) state.historyLoadingId = "";
+  }
+}
+
+async function refreshIntegrations() {
+  let changed = false;
+  if (!invoke) {
+    changed = setIntegrations(fallbackIntegrations, true);
+    if (changed || !hasRendered) render();
+    return;
+  }
+
+  try {
+    changed = setIntegrations(await invoke("list_integrations"));
+  } catch {
+    changed = setIntegrations(fallbackIntegrations, true);
+  }
+  if (changed || !hasRendered) render();
+}
+
+async function focusSession(id) {
+  try {
+    state.toast = invoke ? await invoke("focus_session", { id }) : `浏览器预览无法激活工具：${id}`;
+    state.open = false;
+    state.actionMenuOpen = false;
+  } catch (error) {
+    state.toast = `跳回工具失败：${error}`;
+  }
+  render();
+}
+
+async function decideSession(id, approved) {
+  try {
+    state.toast = approved ? "正在发送批准" : "正在发送拒绝";
+    render();
+    state.toast = invoke
+      ? await invoke(approved ? "approve_session" : "reject_session", { id })
+      : `浏览器预览无法${approved ? "批准" : "拒绝"}真实审批：${id}`;
+    await refreshSessions();
+  } catch (error) {
+    state.toast = `审批失败：${error}`;
+  }
+  render();
+}
+
+function petPanelPlacement(position) {
+  const horizontal = position.x > window.innerWidth / 2 ? "align-right" : "align-left";
+  const vertical = position.y > window.innerHeight / 2 ? "above" : "below";
+  return `${horizontal} ${vertical}`;
+}
+
+function renderPetActionMenu() {
+  const pet = currentPet();
+  return `
+    <div class="pet-action-menu" role="menu" aria-label="打开 ${escapeHtml(pet.name)} 设置">
+      <button
+        class="menu-command ${state.route === "settings" && state.selectedSetting === "pet" && state.open ? "active" : ""}"
+        type="button"
+        role="menuitem"
+        data-panel-route="settings"
+        data-setting-target="pet"
+      >
+        切换宠物
+      </button>
+      <span class="menu-separator" aria-hidden="true"></span>
+      <button
+        class="menu-command ${state.route === "settings" && state.open ? "active" : ""}"
+        type="button"
+        role="menuitem"
+        data-panel-route="settings"
+      >
+        设置
+      </button>
+    </div>
+  `;
+}
+
+function renderPetHub(session) {
+  const pet = currentPet();
+  const attentionCount = state.sessions.filter(
+    (item) => item.needsApproval || item.needsInput || item.phase === "approval" || item.phase === "input",
+  ).length;
+  const badge = attentionCount || state.sessions.filter((item) => item.phase === "processing").length;
+  const position = clampPetPosition(state.petPosition);
+  state.petPosition = position;
+  return `
+    <section
+      class="pet-hub ${state.open ? "is-open" : ""} ${panelOpening ? "is-opening" : ""} ${state.actionMenuOpen ? "show-actions" : ""} ${petPanelPlacement(position)}"
+      style="--pet-x: ${position.x}px; --pet-y: ${position.y}px;"
+    >
+      <button class="pet-trigger" type="button" aria-label="打开 ${escapeHtml(pet.name)} 功能面板">
+        <span class="pet-sprite" aria-hidden="true"></span>
+        ${
+          state.userSettings.showBadge
+            ? `<span class="pet-badge ${attentionCount ? "attention" : ""}">${badge}</span>`
+            : ""
+        }
+        ${state.userSettings.showStatus ? `<span class="pet-status">${phaseLabel(session.phase)}</span>` : ""}
+      </button>
+      ${state.actionMenuOpen ? renderPetActionMenu() : ""}
+      <div class="pet-panel" role="dialog" aria-label="${escapeHtml(pet.name)} 功能面板">
+        <header class="panel-header">
+          <div class="panel-title">
+            <strong>${escapeHtml(pet.name)}</strong>
+            <span>AI 工具与宠物面板</span>
+          </div>
+          <button class="panel-close" type="button" data-panel-close aria-label="关闭功能面板">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </header>
+        ${state.route === "sessions" ? renderSessions() : renderSettings()}
+      </div>
+    </section>
+  `;
+}
+
+function renderSessions() {
+  const selected = selectedSession();
+  const integration = effectiveIntegrationForSession(selected);
+  const canFocus = integration?.focusable && (integration.running || integration.installed);
+  const needsApproval = selected.needsApproval || selected.phase === "approval";
+  return `
+    <div class="sessions-layout">
+      <div class="session-list">
+        ${
+          state.sessions.length
+            ? state.sessions.map(renderSessionRow).join("")
+            : `<div class="empty-state">未检测到运行中的集成</div>`
+        }
+      </div>
+      <article class="session-detail">
+        <div class="session-detail-scroll">
+          ${needsApproval ? renderApprovalNotice(selected) : ""}
+          ${renderSessionHistory(selected)}
+        </div>
+        ${renderSessionActions(selected, needsApproval, canFocus)}
+      </article>
+    </div>
+  `;
+}
+
+function renderSessionActions(session, needsApproval, canFocus) {
+  if (needsApproval) {
+    return `
+      <footer class="approval-actions">
+        <button class="primary" data-approve="${session.id}">批准</button>
+        <button class="danger" data-reject="${session.id}">拒绝</button>
+      </footer>
+    `;
+  }
+
+  if (canFocus) {
+    return `
+      <footer>
+        <button class="primary" data-focus="${session.id}">跳回现场</button>
+      </footer>
+    `;
+  }
+
+  return "";
+}
+
+function renderSessionHistory(session) {
+  const history = state.historyBySessionId[session.id] || [];
+
+  return `
+    <section class="session-history" aria-label="当前会话历史消息">
+      <div class="history-list">
+        ${
+          history.length
+            ? history.map(renderHistoryItem).join("")
+            : `<div class="history-empty">正在读取会话历史</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderHistoryItem(item) {
+  if (item.kind === "patch" || item.kind === "command" || item.role === "tool") {
+    return renderToolHistoryItem(item);
+  }
+
+  const role = item.title || historyRoleLabel(item.role);
+  const message = item.role === "assistant" ? renderHighlightedMessage(item.message) : escapeHtml(item.message);
+  return `
+    <article class="history-item message ${item.role || "event"}">
+      <div class="history-meta">
+        <strong>${escapeHtml(role)}</strong>
+        ${item.timestamp ? `<time>${escapeHtml(shortTime(item.timestamp))}</time>` : ""}
+      </div>
+      <p class="message-content">${message}</p>
+    </article>
+  `;
+}
+
+function renderHighlightedMessage(message) {
+  return String(message || "")
+    .split(/(`[^`]+`)/g)
+    .map((part) => {
+      if (part.startsWith("`") && part.endsWith("`")) {
+        return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
+      }
+      return renderHighlightedPaths(part);
+    })
+    .join("");
+}
+
+function renderHighlightedPaths(value) {
+  return String(value || "")
+    .split(/((?:\.{0,2}\/)?(?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]+(?::\d+)?|[\w.-]+\.[A-Za-z0-9]+(?::\d+)?)/g)
+    .map((part) => (looksLikePath(part) ? `<code>${escapeHtml(part)}</code>` : escapeHtml(part)))
+    .join("");
+}
+
+function looksLikePath(value) {
+  const text = String(value || "");
+  return /(?:\/|^)[\w.-]+\.[A-Za-z0-9]+(?::\d+)?$/.test(text);
+}
+
+function renderToolHistoryItem(item) {
+  const detail = String(item.detail || "").trim();
+  const legacyMessage = String(item.message || "");
+  const hasStructuredDetail = Boolean(detail);
+  const fallbackDetail = !hasStructuredDetail && legacyMessage.includes("\n") ? legacyMessage : "";
+  const visibleDetail = detail || fallbackDetail;
+  const title = item.title || toolHistoryTitle(item);
+  const summary = toolHistorySummary(item, fallbackDetail ? firstLine(legacyMessage) : legacyMessage, visibleDetail);
+  return `
+    <article class="history-item tool ${item.kind || "event"} ${item.status || ""}">
+      <div class="tool-head">
+        <span class="tool-kind">${escapeHtml(title)}</span>
+        <span class="tool-summary">${escapeHtml(summary)}</span>
+        <span class="tool-meta">
+          ${item.status ? `<span class="tool-status">${escapeHtml(toolStatusLabel(item.status))}</span>` : ""}
+          ${item.timestamp ? `<time>${escapeHtml(shortTime(item.timestamp))}</time>` : ""}
+        </span>
+      </div>
+      ${visibleDetail ? renderToolDetail(item, visibleDetail) : ""}
+    </article>
+  `;
+}
+
+function renderToolDetail(item, detail) {
+  if (item.kind !== "patch") {
+    return `<pre>${escapeHtml(detail)}</pre>`;
+  }
+
+  const lines = String(detail || "").split(/\r?\n/);
+  return `
+    <pre class="patch-detail">${lines.map(renderPatchLine).join("")}</pre>
+  `;
+}
+
+function renderPatchLine(line) {
+  const className = patchLineClass(line);
+  return `<span class="${className}">${escapeHtml(line || " ")}</span>`;
+}
+
+function patchLineClass(line) {
+  if (line.startsWith("+") && !line.startsWith("+++")) return "patch-line patch-added";
+  if (line.startsWith("-") && !line.startsWith("---")) return "patch-line patch-removed";
+  if (line.startsWith("@@")) return "patch-line patch-hunk";
+  if (line.startsWith("***")) return "patch-line patch-meta";
+  return "patch-line";
+}
+
+function toolHistoryTitle(item) {
+  if (item.kind === "patch") return "代码修改";
+  if (item.kind === "command") return "运行命令";
+  return historyRoleLabel(item.role);
+}
+
+function toolHistorySummary(item, message, detail) {
+  const summary = String(message || "").trim() || firstLine(detail);
+  if (summary) return summary;
+  if (item.status) return toolStatusLabel(item.status);
+  return "无详细内容";
+}
+
+function toolStatusLabel(status) {
+  return {
+    completed: "已完成",
+    failed: "失败",
+    error: "失败",
+    cancelled: "已取消",
+    running: "运行中",
+  }[status] ?? status;
+}
+
+function firstLine(value) {
+  return String(value || "").split(/\r?\n/).find((line) => line.trim()) || "";
+}
+
+function shortTime(timestamp) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function historyRoleLabel(role) {
+  return {
+    user: "你",
+    assistant: "Codex",
+    tool: "工具",
+    event: "事件",
+  }[role] ?? "消息";
+}
+
+function renderApprovalNotice(session) {
+  return `
+    <div class="approval-notice">
+      <strong>等待审批</strong>
+      <span>${escapeHtml(providerName(session.provider))} 正在等待允许或拒绝本次操作。</span>
+    </div>
+  `;
+}
+
+function renderSessionFacts(session) {
+  const integration = effectiveIntegrationForSession(session);
+  const facts = [
+    ["检测来源", session.source === "hook" ? "真实 hook 桥接" : integration ? "本机进程与安装路径" : "当前界面状态"],
+    ["检测状态", integration ? integrationStatusLabel(integration.status) : phaseLabel(session.phase)],
+    ["工具类型", session.kind || integration?.kind || session.project],
+    ["检测结果", integration?.message || session.message],
+  ];
+
+  if (session.cwd) {
+    facts.push(["工作目录", session.cwd]);
+  }
+
+  if (session.needsApproval || session.phase === "approval") {
+    facts.push(["审批状态", "等待批准或拒绝"]);
+  }
+
+  if (integration) {
+    facts.push([
+      "跳回能力",
+      integration.focusable
+        ? integration.running || integration.installed
+          ? "可跳回桌面应用"
+          : "未检测到可跳回目标"
+        : "CLI 只能检测进程",
+    ]);
+  }
+
+  return `
+    <dl class="session-facts">
+      ${facts.map(([label, value]) => `
+        <div>
+          <dt>${escapeHtml(label)}</dt>
+          <dd>${escapeHtml(value)}</dd>
+        </div>
+      `).join("")}
+    </dl>
+  `;
+}
+
+function renderSessionRow(session) {
+  return `
+    <button class="session-row ${session.id === state.selectedId ? "selected" : ""}" data-select="${session.id}">
+      ${renderProviderMark(session.provider)}
+      <span class="row-body">
+        <strong>${escapeHtml(sessionDisplayTitle(session))}</strong>
+        <small>${escapeHtml(sessionSubtitle(session))}</small>
+      </span>
+      <span class="phase ${session.phase}">${phaseLabel(session.phase)}</span>
+    </button>
+  `;
+}
+
+function renderSettings() {
+  const selected = settingSections.find((section) => section.id === state.selectedSetting) ?? settingSections[0];
+  return `
+    <div class="settings-layout">
+      <aside>
+        ${settingSections.map((section) => `
+          <button class="${section.id === selected.id ? "selected" : ""}" data-setting="${section.id}">
+            <b>${section.title}</b>
+            <small>${section.subtitle}</small>
+          </button>
+        `).join("")}
+      </aside>
+      <section class="settings-panel">
+        ${renderSettingsPanel(selected.id)}
+      </section>
+    </div>
+  `;
+}
+
+function renderSettingsPanel(id) {
+  if (id === "pet") {
+    return `
+      <h2>宠物</h2>
+      <div class="pet-library">
+        ${petLibrary().map(renderPetRow).join("")}
+      </div>
+      <div class="settings-actions">
+        <button class="primary" type="button" data-setting-action="import-pet">导入宠物文件</button>
+      </div>
+      <p class="setting-caption">Codex pet.json / spritesheet.webp / PNG / WEBP / GIF / JPG</p>
+    `;
+  }
+  if (id === "integrations") {
+    return `
+      <h2>集成</h2>
+      <div class="integration-list">
+        ${state.integrations.map(renderIntegrationRow).join("")}
+      </div>
+      <div class="settings-actions">
+        <button class="primary" type="button" data-setting-action="refresh-integrations">刷新集成状态</button>
+      </div>
+      <p class="setting-caption">当前集成会检测本机应用/CLI 是否安装和运行；桌面应用可以跳回，CLI 目前只能检测进程，还不能定位到具体终端窗口。</p>
+    `;
+  }
+  return `
+    <h2>显示</h2>
+    <div class="setting-group">
+      ${renderSettingToggle("显示会话徽标", "showBadge")}
+      ${renderSettingToggle("显示状态标签", "showStatus")}
+    </div>
+    <div class="settings-actions">
+      <button class="primary" type="button" data-setting-action="reset-position">重置到右下角</button>
+    </div>
+  `;
+}
+
+function renderPetRow(pet) {
+  const selected = pet.id === currentPet().id;
+  const editing = state.renamingPetId === pet.id;
+  const kindLabel = pet.kind === "atlas" ? "动作集" : "图片";
+  const sourceLabel = pet.source === "built-in" ? "内置" : "导入";
+
+  return `
+    <article class="pet-row ${selected ? "selected" : ""}">
+      ${renderPetPreview(pet)}
+      ${
+        editing
+          ? `<div class="pet-name-editor">
+              <input
+                type="text"
+                maxlength="32"
+                value="${escapeHtml(pet.name)}"
+                data-pet-name-input="${pet.id}"
+                aria-label="宠物名称"
+                autofocus
+              />
+              <small>${sourceLabel} · ${kindLabel}</small>
+            </div>`
+          : `<div>
+              <strong>${escapeHtml(pet.name)}</strong>
+              <small>${sourceLabel} · ${kindLabel}</small>
+            </div>`
+      }
+      <span class="integration-status ${selected ? "running" : "installed"}">${selected ? "当前" : "可用"}</span>
+      <span class="pet-row-actions">
+        ${
+          editing
+            ? `<button type="button" data-pet-rename-save="${pet.id}">保存</button>
+              <button type="button" data-pet-rename-cancel="${pet.id}">取消</button>`
+            : `<button type="button" data-pet-rename-start="${pet.id}">改名</button>
+              <button type="button" data-pet-select="${pet.id}" ${selected ? "disabled" : ""}>
+                ${selected ? "使用中" : "切换"}
+              </button>
+              ${
+                pet.source === "imported"
+                  ? `<button class="pet-remove" type="button" data-pet-remove="${pet.id}">移除</button>`
+                  : ""
+              }`
+        }
+      </span>
+    </article>
+  `;
+}
+
+function renderPetPreview(pet) {
+  const source = escapeHtml(petAssetSource(pet));
+  if (pet.kind === "atlas") {
+    return `
+      <span
+        class="pet-preview atlas"
+        style="background-image: url('${source}'); background-size: ${38 * pet.columns}px ${42 * pet.rows}px;"
+        aria-hidden="true"
+      ></span>
+    `;
+  }
+
+  return `
+    <span
+      class="pet-preview image"
+      style="background-image: url('${source}');"
+      aria-hidden="true"
+    ></span>
+  `;
+}
+
+function renderIntegrationRow(integration) {
+  const canFocus = integration.focusable && (integration.running || integration.installed);
+  return `
+    <article class="integration-row">
+      ${renderProviderMark(integration.id)}
+      <div>
+        <strong>${escapeHtml(integration.name)}</strong>
+        <small>${escapeHtml(integration.kind)} · ${escapeHtml(integration.message)}</small>
+      </div>
+      <span class="integration-status ${integration.status}">${integrationStatusLabel(integration.status)}</span>
+      <button type="button" data-integration-focus="${integration.id}" ${canFocus ? "" : "disabled"}>
+        跳回
+      </button>
+    </article>
+  `;
+}
+
+function renderSettingToggle(label, key) {
+  return `
+    <label class="setting-line">
+      <span>${label}</span>
+      <input type="checkbox" data-setting-toggle="${key}" ${state.userSettings[key] ? "checked" : ""} />
+    </label>
+  `;
+}
+
+let lastRenderedOpenState = state.open;
+let panelOpening = false;
+let hasRendered = false;
+let lastHistoryScrollSignature = "";
+
+function render() {
+  const session = activeSession();
+  panelOpening = state.open && !lastRenderedOpenState;
+  const shouldCheckHistoryScroll = panelOpening || state.route === "sessions";
+  document.querySelector("#app").innerHTML = `
+    <main class="app">
+      ${renderPetHub(session)}
+      ${state.toast ? `<div class="toast">${escapeHtml(state.toast)}</div>` : ""}
+    </main>
+  `;
+  lastRenderedOpenState = state.open;
+  panelOpening = false;
+  hasRendered = true;
+  startPetAnimator();
+  syncPetBehavior();
+  syncHistoryScroll(shouldCheckHistoryScroll);
+}
+
+function syncHistoryScroll(force = false) {
+  if (!state.open || state.route !== "sessions") return;
+
+  const session = selectedSession();
+  const history = state.historyBySessionId[session.id] || [];
+  const latest = history[history.length - 1];
+  const signature = `${session.id}:${history.length}:${latest?.timestamp || ""}:${latest?.message || ""}`;
+  if (!force && signature === lastHistoryScrollSignature) return;
+  lastHistoryScrollSignature = signature;
+
+  window.requestAnimationFrame(() => {
+    const historyList = document.querySelector(".history-list");
+    if (!historyList) return;
+    historyList.scrollTop = historyList.scrollHeight;
+  });
+}
+
+let spriteTimer = null;
+let petBehaviorTimer = null;
+let spriteFrame = 0;
+let spriteMode = "";
+let spritePetId = "";
+let lastBehaviorOpenState = null;
+
+function activePetAction() {
+  if (state.dragAction) return state.dragAction;
+  if (state.open) return "thinking";
+  return state.petAction || "sleeping";
+}
+
+function animationSequence(animation) {
+  return animation.sequence || Array.from({ length: animation.frames }, (_, index) => index);
+}
+
+function animationStepDuration(animation, sequenceIndex) {
+  const frame = animationSequence(animation)[sequenceIndex] ?? 0;
+  return animation.durations[sequenceIndex] ?? animation.durations[frame] ?? 140;
+}
+
+function canUseBuiltInActionStrip(animation, pet) {
+  return Boolean(animation.builtInSrc && pet.id === "tuxie" && pet.source === "built-in");
+}
+
+function resolvePetAnimation(animation, pet) {
+  if (canUseBuiltInActionStrip(animation, pet)) {
+    return {
+      ...animation,
+      src: animation.builtInSrc,
+      row: animation.row ?? 0,
+      columns: animation.columns || animation.frames,
+      rows: animation.rows || 1,
+    };
+  }
+
+  return {
+    ...animation,
+    src: petAssetSource(pet),
+    row: animation.fallbackRow ?? animation.row,
+    frames: animation.fallbackFrames || Math.min(animation.frames, pet.columns),
+    durations: animation.fallbackDurations || animation.durations,
+    sequence: animation.fallbackSequence ?? animation.sequence,
+    columns: pet.columns,
+    rows: pet.rows,
+  };
+}
+
+function paintPetFrame() {
+  const sprite = document.querySelector(".pet-sprite");
+  if (!sprite) return;
+
+  const pet = currentPet();
+  const source = petAssetSource(pet);
+  if (pet.kind !== "atlas") {
+    spritePetId = pet.id;
+    spriteMode = "image";
+    spriteFrame = 0;
+    sprite.classList.add("pet-image");
+    sprite.style.backgroundImage = `url("${source}")`;
+    sprite.style.backgroundSize = "contain";
+    sprite.style.backgroundPosition = "center";
+    window.clearTimeout(spriteTimer);
+    return;
+  }
+
+  const mode = activePetAction();
+  const animation = resolvePetAnimation(petAnimations[mode] || petAnimations.sleeping, pet);
+  const sequence = animationSequence(animation);
+  if (spritePetId !== pet.id || spriteMode !== mode) {
+    spritePetId = pet.id;
+    spriteMode = mode;
+    spriteFrame = 0;
+  }
+
+  const rect = sprite.getBoundingClientRect();
+  const cellWidth = rect.width || PET_WIDTH;
+  const cellHeight = rect.height || PET_HEIGHT;
+  sprite.classList.remove("pet-image");
+  sprite.style.backgroundImage = `url("${animation.src || source}")`;
+  sprite.style.backgroundSize = `${cellWidth * animation.columns}px ${cellHeight * animation.rows}px`;
+  sprite.style.backgroundPosition = `${-(sequence[spriteFrame] ?? 0) * cellWidth}px ${-animation.row * cellHeight}px`;
+  const duration = animationStepDuration(animation, spriteFrame);
+  spriteFrame = (spriteFrame + 1) % sequence.length;
+
+  window.clearTimeout(spriteTimer);
+  spriteTimer = window.setTimeout(paintPetFrame, duration);
+}
+
+function startPetAnimator(reset = false) {
+  if (reset) {
+    spritePetId = "";
+    spriteMode = "";
+    spriteFrame = 0;
+  }
+  window.clearTimeout(spriteTimer);
+  paintPetFrame();
+}
+
+function clearPetBehaviorTimer() {
+  window.clearTimeout(petBehaviorTimer);
+  petBehaviorTimer = null;
+}
+
+function setPetAction(action) {
+  const nextAction = petAnimations[action] ? action : "sleeping";
+  if (state.petAction === nextAction) return;
+  state.petAction = nextAction;
+  startPetAnimator(true);
+}
+
+function animationDuration(action) {
+  const animation = resolvePetAnimation(petAnimations[action] || petAnimations.sleeping, currentPet());
+  const cycleDuration = animationSequence(animation)
+    .reduce((duration, _frame, index) => duration + animationStepDuration(animation, index), 0);
+  return cycleDuration * (animation.loops || 1);
+}
+
+function canRunClosedPetBehavior() {
+  return !state.open && !state.dragAction && currentPet().kind === "atlas";
+}
+
+function nextClosedPetAction(action) {
+  const index = closedPetSequence.indexOf(action);
+  return closedPetSequence[(index + 1) % closedPetSequence.length] || closedPetSequence[0];
+}
+
+function schedulePetBehavior({ preferActivity = false } = {}) {
+  clearPetBehaviorTimer();
+
+  if (state.dragAction) return;
+
+  if (state.open) {
+    setPetAction("thinking");
+    return;
+  }
+
+  if (currentPet().kind !== "atlas") return;
+
+  if (preferActivity || !closedPetSequence.includes(state.petAction)) {
+    setPetAction(closedPetSequence[0]);
+  }
+
+  petBehaviorTimer = window.setTimeout(() => {
+    if (!canRunClosedPetBehavior()) return;
+    setPetAction(nextClosedPetAction(state.petAction));
+    schedulePetBehavior();
+  }, animationDuration(state.petAction));
+}
+
+function syncPetBehavior() {
+  const wasOpen = lastBehaviorOpenState;
+  const firstSync = wasOpen === null;
+  const justClosed = wasOpen === true && !state.open;
+  lastBehaviorOpenState = state.open;
+  schedulePetBehavior({ preferActivity: !state.open && (firstSync || justClosed) });
+}
+
+function setDragAction(action) {
+  if (state.dragAction === action) return;
+  state.dragAction = action;
+  startPetAnimator(true);
+}
+
+function interactiveRects() {
+  return [".pet-trigger", ".pet-panel", ".pet-action-menu"]
+    .map((selector) => document.querySelector(selector))
+    .filter(Boolean)
+    .map((element) => element.getBoundingClientRect())
+    .filter((rect) => rect.width > 0 && rect.height > 0);
+}
+
+async function updateCursorPassThrough() {
+  if (!appWindow || !tauriWindowApi?.cursorPosition) return;
+
+  try {
+    const [cursor, origin, scaleFactor] = await Promise.all([
+      tauriWindowApi.cursorPosition(),
+      appWindow.outerPosition(),
+      appWindow.scaleFactor(),
+    ]);
+    const x = (cursor.x - origin.x) / scaleFactor;
+    const y = (cursor.y - origin.y) / scaleFactor;
+    const overInteractive = interactiveRects().some(
+      (rect) => x >= rect.left - 2 && x <= rect.right + 2 && y >= rect.top - 2 && y <= rect.bottom + 2,
+    );
+    await appWindow.setIgnoreCursorEvents(!overInteractive && !petDrag);
+  } catch {
+    // In browser preview, Tauri window APIs are not available.
+  }
+}
+
+async function configureOverlayWindow() {
+  if (!appWindow) return;
+
+  for (const task of [
+    () => appWindow.setShadow(false),
+    () => appWindow.setAlwaysOnTop(true),
+    () => appWindow.setSkipTaskbar(true),
+    () => appWindow.setBackgroundColor("#00000000"),
+    () => appWindow.setSimpleFullscreen(true),
+    () => appWindow.setIgnoreCursorEvents(false),
+  ]) {
+    try {
+      await task();
+    } catch {
+      // Browser preview and platform-specific window APIs should not break the UI.
+    }
+  }
+  window.setInterval(updateCursorPassThrough, PASS_THROUGH_POLL_MS);
+  updateCursorPassThrough();
+}
+
+let petDrag = null;
+
+function applyPetPosition(position) {
+  state.petPosition = clampPetPosition(position);
+  const hub = document.querySelector(".pet-hub");
+  if (!hub) return;
+  hub.style.setProperty("--pet-x", `${state.petPosition.x}px`);
+  hub.style.setProperty("--pet-y", `${state.petPosition.y}px`);
+}
+
+function handlePetPointerDown(event) {
+  const trigger = event.target.closest?.(".pet-trigger");
+  if (!trigger || event.button !== 0) return;
+
+  event.preventDefault();
+  state.actionMenuOpen = false;
+  const position = clampPetPosition(state.petPosition);
+  petDrag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    offsetX: event.clientX - position.x,
+    offsetY: event.clientY - position.y,
+    moved: false,
+    dragging: false,
+    timer: window.setTimeout(() => {
+      if (!petDrag) return;
+      petDrag.dragging = true;
+      state.open = false;
+      state.actionMenuOpen = false;
+      setDragAction("running-right");
+      const hub = document.querySelector(".pet-hub");
+      hub?.classList.add("is-dragging");
+      hub?.classList.remove("is-open", "show-actions");
+      trigger.classList.add("is-dragging");
+    }, PET_DRAG_HOLD_MS),
+  };
+  trigger.setPointerCapture?.(event.pointerId);
+}
+
+function handlePetPointerMove(event) {
+  if (!petDrag || event.pointerId !== petDrag.pointerId) return;
+
+  const distance = Math.hypot(event.clientX - petDrag.startX, event.clientY - petDrag.startY);
+  if (!petDrag.dragging) {
+    petDrag.moved = distance > PET_DRAG_DISTANCE;
+    if (petDrag.moved) {
+      window.clearTimeout(petDrag.timer);
+      petDrag.dragging = true;
+      state.open = false;
+      state.actionMenuOpen = false;
+      document.querySelector(".pet-hub")?.classList.add("is-dragging");
+      document.querySelector(".pet-hub")?.classList.remove("is-open", "show-actions");
+      document.querySelector(".pet-trigger")?.classList.add("is-dragging");
+    } else {
+      return;
+    }
+  }
+
+  const deltaX = event.clientX - petDrag.startX;
+  if (deltaX < -2) {
+    setDragAction("running-left");
+  } else if (deltaX > 2) {
+    setDragAction("running-right");
+  } else {
+    setDragAction(state.dragAction === "running-left" ? "running-left" : "running-right");
+  }
+
+  if (!petDrag.moved) {
+    petDrag.moved = true;
+  }
+
+  applyPetPosition({
+    x: event.clientX - petDrag.offsetX,
+    y: event.clientY - petDrag.offsetY,
+  });
+}
+
+function handlePetPointerUp(event) {
+  if (!petDrag || event.pointerId !== petDrag.pointerId) return;
+
+  window.clearTimeout(petDrag.timer);
+  const wasDragging = petDrag.dragging;
+  const wasMoved = petDrag.moved;
+  const trigger = event.target.closest?.(".pet-trigger") || document.querySelector(".pet-trigger");
+  trigger?.releasePointerCapture?.(event.pointerId);
+  trigger?.classList.remove("is-dragging");
+  document.querySelector(".pet-hub")?.classList.remove("is-dragging");
+
+  petDrag = null;
+  state.dragAction = null;
+  if (wasDragging) {
+    state.petAction = "sleeping";
+    savePetPosition(state.petPosition);
+    render();
+    return;
+  }
+  if (!wasMoved) {
+    if (!state.open) state.route = "sessions";
+    state.open = !state.open;
+    state.actionMenuOpen = false;
+    render();
+  }
+}
+
+document.addEventListener("click", async (event) => {
+  const target = event.target.closest?.("button");
+  if (!target) return;
+
+  if (target.dataset.panelClose !== undefined) {
+    state.open = false;
+    state.actionMenuOpen = false;
+    render();
+    return;
+  }
+  if (target.dataset.panelRoute) {
+    state.route = target.dataset.panelRoute;
+    if (target.dataset.settingTarget) state.selectedSetting = target.dataset.settingTarget;
+    state.open = true;
+    state.actionMenuOpen = false;
+    render();
+    return;
+  }
+  if (target.dataset.petRenameStart) {
+    state.renamingPetId = target.dataset.petRenameStart;
+    state.route = "settings";
+    state.selectedSetting = "pet";
+    state.open = true;
+    render();
+    return;
+  }
+  if (target.dataset.petRenameCancel) {
+    state.renamingPetId = "";
+    render();
+    return;
+  }
+  if (target.dataset.petRenameSave) {
+    const id = target.dataset.petRenameSave;
+    const input = petNameInput(id);
+    commitPetRename(id, input?.value || "");
+    render();
+    return;
+  }
+  if (target.dataset.petSelect) {
+    const pet = petLibrary().find((item) => item.id === target.dataset.petSelect);
+    if (pet) {
+      state.userSettings.currentPetId = pet.id;
+      state.petAction = "sleeping";
+      state.dragAction = null;
+      state.renamingPetId = "";
+      state.route = "settings";
+      state.selectedSetting = "pet";
+      state.open = true;
+      state.toast = `已切换到 ${pet.name}`;
+      saveUserSettings();
+      startPetAnimator(true);
+    }
+    render();
+    return;
+  }
+  if (target.dataset.petRemove) {
+    const removed = state.userSettings.importedPets.find((pet) => pet.id === target.dataset.petRemove);
+    state.userSettings.importedPets = state.userSettings.importedPets.filter((pet) => pet.id !== target.dataset.petRemove);
+    delete state.userSettings.renamedPets[target.dataset.petRemove];
+    if (state.userSettings.currentPetId === target.dataset.petRemove) {
+      state.userSettings.currentPetId = "tuxie";
+      state.petAction = "sleeping";
+      state.dragAction = null;
+    }
+    state.renamingPetId = "";
+    state.route = "settings";
+    state.selectedSetting = "pet";
+    state.open = true;
+    state.toast = removed ? `已移除 ${removed.name}` : "已移除宠物";
+    saveUserSettings();
+    render();
+    return;
+  }
+  if (target.dataset.settingAction === "import-pet") {
+    if (!invoke) {
+      state.toast = "浏览器预览无法导入文件";
+      render();
+      return;
+    }
+
+    state.toast = "正在导入宠物";
+    render();
+
+    try {
+      const imported = normalizePet({ ...(await invoke("import_pet_asset")), source: "imported" });
+      if (!imported) throw new Error("导入结果无效");
+
+      state.userSettings.importedPets = [
+        ...state.userSettings.importedPets.filter((pet) => pet.id !== imported.id),
+        imported,
+      ];
+      state.userSettings.currentPetId = imported.id;
+      state.petAction = "sleeping";
+      state.dragAction = null;
+      state.renamingPetId = "";
+      state.route = "settings";
+      state.selectedSetting = "pet";
+      state.open = true;
+      state.toast = `已导入 ${imported.name}`;
+      saveUserSettings();
+      startPetAnimator(true);
+    } catch (error) {
+      state.toast = String(error).includes("已取消") ? "已取消导入" : `导入失败：${error}`;
+    }
+
+    render();
+    return;
+  }
+  if (target.dataset.settingAction === "reset-position") {
+    state.petPosition = defaultPetPosition();
+    savePetPosition(state.petPosition);
+    state.toast = "已重置到右下角";
+    render();
+    return;
+  }
+  if (target.dataset.integrationFocus) {
+    await focusSession(`${target.dataset.integrationFocus}-local`);
+    return;
+  }
+  if (target.dataset.approve) {
+    await decideSession(target.dataset.approve, true);
+    return;
+  }
+  if (target.dataset.reject) {
+    await decideSession(target.dataset.reject, false);
+    return;
+  }
+  if (target.dataset.settingAction === "refresh-integrations") {
+    state.toast = "正在刷新集成状态";
+    render();
+    await refreshIntegrations();
+    await refreshSessions();
+    state.route = "settings";
+    state.selectedSetting = "integrations";
+    state.open = true;
+    state.toast = "已刷新集成状态";
+    render();
+    return;
+  }
+  if (target.dataset.setting) {
+    state.selectedSetting = target.dataset.setting;
+    state.route = "settings";
+    render();
+    return;
+  }
+  if (target.dataset.select) {
+    state.selectedId = target.dataset.select;
+    state.route = "sessions";
+    render();
+    refreshSessionHistory(true);
+    return;
+  }
+  if (target.dataset.focus) await focusSession(target.dataset.focus);
+  render();
+});
+
+document.addEventListener("change", (event) => {
+  const key = event.target.dataset?.settingToggle;
+  if (!key) return;
+
+  state.userSettings[key] = event.target.checked;
+  saveUserSettings();
+  render();
+});
+
+document.addEventListener("pointerdown", handlePetPointerDown);
+document.addEventListener("pointermove", handlePetPointerMove);
+document.addEventListener("pointerup", handlePetPointerUp);
+document.addEventListener("pointercancel", handlePetPointerUp);
+document.addEventListener("contextmenu", (event) => {
+  if (!event.target.closest?.(".pet-trigger")) return;
+  event.preventDefault();
+  state.actionMenuOpen = !state.actionMenuOpen;
+  state.open = false;
+  render();
+});
+document.addEventListener("keydown", (event) => {
+  const renamePetId = event.target.dataset?.petNameInput;
+  if (renamePetId && event.key === "Enter") {
+    event.preventDefault();
+    commitPetRename(renamePetId, event.target.value);
+    render();
+    return;
+  }
+  if (renamePetId && event.key === "Escape") {
+    event.preventDefault();
+    state.renamingPetId = "";
+    render();
+    return;
+  }
+  if (event.key === "Escape" && (state.open || state.actionMenuOpen)) {
+    state.open = false;
+    state.actionMenuOpen = false;
+    render();
+  }
+  if ((event.key === "Enter" || event.key === " ") && event.target.closest?.(".pet-trigger")) {
+    event.preventDefault();
+    state.open = !state.open;
+    state.actionMenuOpen = false;
+    render();
+  }
+});
+window.addEventListener("resize", () => {
+  state.petPosition = clampPetPosition(state.petPosition);
+  render();
+});
+
+if (listen) {
+  listen("sessions://changed", (event) => {
+    if (setSessions(event.payload) || !hasRendered) render();
+    refreshSessionHistory();
+  });
+}
+
+render();
+configureOverlayWindow();
+refreshIntegrations();
+refreshSessions();
+refreshSessionHistory();
+window.setInterval(refreshSessions, SESSION_POLL_MS);
+window.setInterval(refreshSessionHistory, SESSION_HISTORY_POLL_MS);

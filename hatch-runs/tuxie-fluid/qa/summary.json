@@ -1,0 +1,109 @@
+{
+  "ok": true,
+  "atlas": {
+    "width": 1536,
+    "height": 1872,
+    "mode": "RGBA"
+  },
+  "replaced_rows": [
+    {
+      "label": "play-wand",
+      "row": 3,
+      "source": "/Users/phoenixicarus/.codex/generated_images/019e0cc6-a059-7911-8a78-3435c969edc2/ig_0e9a614c14e6e4b20169ff3058c1bc8193b26de13c59d019b3.png"
+    }
+  ],
+  "extraction_methods": {
+    "play-wand": "components"
+  },
+  "nonempty_cells": {
+    "idle": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "running-right": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "running-left": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "play-wand": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "play-ball": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "sleeping": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "eating": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "running": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "thinking": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "outputs": {
+    "png": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/spritesheet.png",
+    "webp": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/final/spritesheet.webp",
+    "contact_sheet": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/qa/contact-sheet.png"
+  }
+}
