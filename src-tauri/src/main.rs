@@ -132,6 +132,7 @@ struct IntegrationDefinition {
 struct RunningProcess {
     pid: String,
     args: String,
+    cwd: Option<String>,
 }
 
 struct AppState {
@@ -172,12 +173,16 @@ fn list_session_history(
         .unwrap_or(id);
 
     let path = if session_id.starts_with("process:") {
-        cwd.as_deref()
+        if let Some(cwd) = cwd
+            .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .and_then(|value| find_latest_codex_rollout_path_for_cwd(Path::new(value)))
-            .or_else(find_latest_codex_rollout_path_for_current_dir)
-            .or_else(find_latest_codex_rollout_path)
+        {
+            find_latest_codex_rollout_path_for_cwd(Path::new(cwd))
+        } else {
+            find_latest_codex_rollout_path_for_current_dir()
+                .or_else(find_latest_codex_rollout_path)
+        }
     } else {
         find_codex_rollout_path(&session_id)
             .or_else(|| {
@@ -186,7 +191,6 @@ fn list_session_history(
                     .filter(|value| !value.is_empty())
                     .and_then(|value| find_latest_codex_rollout_path_for_cwd(Path::new(value)))
             })
-            .or_else(find_latest_codex_rollout_path)
     };
 
     let Some(path) = path else {
@@ -849,11 +853,13 @@ fn compact_history_message(value: &str) -> String {
 
 fn detect_sessions() -> Vec<IslandSession> {
     let mut sessions = detect_bridge_sessions();
-    append_codex_cli_process_sessions(&mut sessions);
+    let codex_cli_process_count = running_process_count("codex-cli");
+    append_codex_cli_process_sessions(&mut sessions, codex_cli_process_count);
+    limit_codex_cli_island_sessions(&mut sessions, codex_cli_process_count);
     sessions
 }
 
-fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>) {
+fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, codex_cli_process_count: usize) {
     let processes = running_processes("codex-cli");
     let context = latest_codex_cli_context(sessions);
     let active_codex_cli_sessions = sessions
@@ -865,7 +871,7 @@ fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>) {
         })
         .count();
 
-    let missing_process_sessions = processes.len().saturating_sub(active_codex_cli_sessions);
+    let missing_process_sessions = codex_cli_process_count.saturating_sub(active_codex_cli_sessions);
     if missing_process_sessions == 0 {
         return;
     }
@@ -873,6 +879,22 @@ fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>) {
     for process in processes.into_iter().take(missing_process_sessions) {
         sessions.push(codex_cli_process_session(process, context.as_ref()));
     }
+}
+
+fn limit_codex_cli_island_sessions(sessions: &mut Vec<IslandSession>, codex_cli_process_count: usize) {
+    if codex_cli_process_count == 0 {
+        return;
+    }
+
+    let mut kept = 0usize;
+    sessions.retain(|session| {
+        if session.provider != "codex" || session.kind != "Codex CLI" {
+            return true;
+        }
+
+        kept += 1;
+        kept <= codex_cli_process_count
+    });
 }
 
 fn latest_codex_cli_context(sessions: &[IslandSession]) -> Option<IslandSession> {
@@ -890,15 +912,28 @@ fn codex_cli_process_session(
     process: RunningProcess,
     context: Option<&IslandSession>,
 ) -> IslandSession {
-    let project = process_session_project(context);
-    let cwd = context
-        .map(|session| session.cwd.trim().to_string())
+    let cwd = process
+        .cwd
+        .as_deref()
+        .map(str::trim)
         .filter(|cwd| !cwd.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            context
+                .map(|session| session.cwd.trim().to_string())
+                .filter(|cwd| !cwd.is_empty())
+        })
         .unwrap_or_default();
+    let project = process_session_project(&cwd, context);
+    let session_id = if cwd.is_empty() {
+        format!("process:codex-cli:{}", process.pid)
+    } else {
+        format!("process:codex-cli:{}", decision_file_stem(&cwd))
+    };
 
     IslandSession {
-        id: format!("process:codex-cli:{}", process.pid),
-        session_id: format!("process:codex-cli:{}", process.pid),
+        id: session_id.clone(),
+        session_id,
         provider: "codex".into(),
         title: project.clone(),
         project,
@@ -913,7 +948,11 @@ fn codex_cli_process_session(
     }
 }
 
-fn process_session_project(context: Option<&IslandSession>) -> String {
+fn process_session_project(cwd: &str, context: Option<&IslandSession>) -> String {
+    if !cwd.trim().is_empty() {
+        return project_name_from_cwd(cwd);
+    }
+
     if let Some(cwd) = context
         .map(|session| session.cwd.trim().to_string())
         .filter(|cwd| !cwd.is_empty())
@@ -1297,6 +1336,14 @@ fn bridge_session_title(
     session: &BridgeSession,
     thread_name: Option<&str>,
 ) -> String {
+    if !session.cwd.trim().is_empty() {
+        return project_name_from_cwd(&session.cwd);
+    }
+
+    if !project.trim().is_empty() {
+        return project.trim().to_string();
+    }
+
     let title = session.title.trim();
     if !title.is_empty()
         && !is_generic_bridge_title(provider, title)
@@ -1317,10 +1364,6 @@ fn bridge_session_title(
         if !message.is_empty() && !is_generic_bridge_message(provider, message) {
             return compact_title(message);
         }
-    }
-
-    if !project.trim().is_empty() {
-        return project.trim().to_string();
     }
 
     format!("{} 会话", provider_name(provider))
@@ -1637,6 +1680,10 @@ fn running_processes(integration_id: &str) -> Vec<RunningProcess> {
         .lines()
         .filter(|line| process_line_matches_definition(line, &definition))
         .filter_map(parse_running_process)
+        .map(|mut process| {
+            process.cwd = process_cwd(&process.pid);
+            process
+        })
         .collect()
 }
 
@@ -1662,7 +1709,25 @@ fn parse_running_process(line: &str) -> Option<RunningProcess> {
     Some(RunningProcess {
         pid: pid.trim().into(),
         args: args.trim().into(),
+        cwd: None,
     })
+}
+
+fn process_cwd(pid: &str) -> Option<String> {
+    let output = Command::new("lsof")
+        .args(["-a", "-p", pid, "-d", "cwd", "-Fn"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| line.strip_prefix('n'))
+        .map(str::trim)
+        .filter(|cwd| !cwd.is_empty())
+        .map(str::to_string)
 }
 
 fn process_line_is_codex_cli(line: &str) -> bool {
@@ -1670,8 +1735,16 @@ fn process_line_is_codex_cli(line: &str) -> bool {
         .map(|process| process.args)
         .unwrap_or_else(|| line.trim().to_string());
     let args = args.trim();
+    let args_lower = args.to_lowercase();
 
-    if args.contains("/codex.app/") || args.contains("codex app-server") {
+    if args_lower.contains("/codex.app/") || args_lower.contains("codex app-server") {
+        return false;
+    }
+
+    if args_lower.contains("phoenix-pet-codex-hook")
+        || args_lower.contains("map-hook-event.mjs")
+        || args_lower.contains("scripts/map-hook-event")
+    {
         return false;
     }
 
@@ -1679,11 +1752,28 @@ fn process_line_is_codex_cli(line: &str) -> bool {
         return false;
     }
 
-    args.split_whitespace().any(|part| {
-        Path::new(part)
+    let parts = args.split_whitespace().collect::<Vec<_>>();
+    parts.iter().enumerate().any(|(index, part)| {
+        let Some(name) = Path::new(part)
             .file_name()
             .and_then(|value| value.to_str())
-            .map(|name| name == "codex")
+        else {
+            return false;
+        };
+
+        if name != "codex" {
+            return false;
+        }
+
+        if index == 0 || part.contains('/') {
+            return true;
+        }
+
+        parts
+            .get(index.saturating_sub(1))
+            .and_then(|previous| Path::new(previous).file_name())
+            .and_then(|value| value.to_str())
+            .map(|previous| matches!(previous, "node" | "nodejs" | "env"))
             .unwrap_or(false)
     })
 }
@@ -2033,12 +2123,13 @@ mod tests {
     #[test]
     fn generic_bridge_title_falls_back_without_session_id() {
         let mut session = sample_session("rust-approval-test");
+        session.cwd = String::new();
         session.title = "Codex Session".into();
         session.latest_message = Some("codex event: progress".into());
 
         assert_eq!(
             bridge_session_title("codex", "Phoenix-Pet", &session, Some("真实会话标题")),
-            "真实会话标题"
+            "Phoenix-Pet"
         );
         assert_eq!(
             bridge_session_title("codex", "Phoenix-Pet", &session, None),
@@ -2048,13 +2139,19 @@ mod tests {
         session.title = "Phoenix-Pet".into();
         assert_eq!(
             bridge_session_title("codex", "Phoenix-Pet", &session, Some("真实会话标题")),
-            "真实会话标题"
+            "Phoenix-Pet"
         );
 
         session.title = "Custom Approval".into();
         assert_eq!(
             bridge_session_title("codex", "Phoenix-Pet", &session, Some("真实会话标题")),
-            "Custom Approval"
+            "Phoenix-Pet"
+        );
+
+        session.cwd = "/tmp/Romantic".into();
+        assert_eq!(
+            bridge_session_title("codex", "Phoenix-Pet", &session, Some("真实会话标题")),
+            "Romantic"
         );
     }
 
@@ -2073,6 +2170,12 @@ mod tests {
         ));
         assert!(!process_line_is_codex_cli(
             "128 /opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/codex/codex"
+        ));
+        assert!(!process_line_is_codex_cli(
+            "129 node /Users/me/Phoenix-Pet/scripts/map-hook-event.mjs approval_requested --provider codex --quiet 1"
+        ));
+        assert!(!process_line_is_codex_cli(
+            "130 /bin/zsh -c ps -axo pid=,command= | rg -i codex"
         ));
     }
 
@@ -2101,6 +2204,21 @@ mod tests {
             RunningProcess {
                 pid: "123".into(),
                 args: "node /opt/homebrew/bin/codex".into(),
+                cwd: Some("/tmp/Romantic".into()),
+            },
+            Some(&context_session),
+        );
+
+        assert_eq!(session.title, "Romantic");
+        assert_eq!(session.project, "Romantic");
+        assert_eq!(session.cwd, "/tmp/Romantic");
+        assert_eq!(session.id, "process:codex-cli:_tmp_Romantic");
+
+        let session = codex_cli_process_session(
+            RunningProcess {
+                pid: "456".into(),
+                args: "node /opt/homebrew/bin/codex".into(),
+                cwd: None,
             },
             Some(&context_session),
         );
@@ -2202,17 +2320,17 @@ mod tests {
 
         let visible = detect_bridge_sessions();
         assert_eq!(visible.len(), 3);
-        assert_eq!(visible[0].title, "Approval Session");
-        assert_eq!(visible[1].title, "Input Session");
-        assert_eq!(visible[2].title, "Current 0");
-        assert!(visible.iter().any(|session| session.title == "Current 0"));
-        assert!(!visible.iter().any(|session| session.title == "History 6"));
+        assert_eq!(visible[0].session_id, "approval-session");
+        assert_eq!(visible[1].session_id, "input-session");
+        assert_eq!(visible[2].session_id, "current-0");
+        assert!(visible.iter().any(|session| session.session_id == "current-0"));
+        assert!(!visible.iter().any(|session| session.session_id == "history-6"));
         assert!(!visible
             .iter()
-            .any(|session| session.title == "Failed Session"));
+            .any(|session| session.session_id == "failed-session"));
         assert!(!visible
             .iter()
-            .any(|session| session.title == "Waiting Session"));
+            .any(|session| session.session_id == "waiting-session"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2233,7 +2351,7 @@ mod tests {
 
         let visible = detect_sessions();
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].title, "Active Codex CLI");
+        assert_eq!(visible[0].title, "phoenix-pet");
         assert_eq!(visible[0].kind, "Codex CLI");
         assert_eq!(visible[0].source, "hook");
 
@@ -2269,11 +2387,11 @@ mod tests {
 
         let visible = detect_sessions();
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].title, "Active Codex CLI");
+        assert_eq!(visible[0].title, "phoenix-pet");
         assert_eq!(visible[0].kind, "Codex CLI");
         assert!(!visible
             .iter()
-            .any(|session| session.title == "Stale Codex CLI One"));
+            .any(|session| session.session_id == "stale-codex-cli-one"));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2303,9 +2421,83 @@ mod tests {
 
         let visible = detect_sessions();
         assert_eq!(visible.len(), 1);
-        assert_eq!(visible[0].title, "Approval Codex CLI");
+        assert_eq!(visible[0].title, "same-project");
         assert_eq!(visible[0].phase, "approval");
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn codex_cli_island_sessions_are_capped_to_process_count() {
+        let mut sessions = vec![
+            IslandSession {
+                id: "bridge:codex:approval".into(),
+                session_id: "approval".into(),
+                provider: "codex".into(),
+                title: "Approval".into(),
+                project: "Project".into(),
+                kind: "Codex CLI".into(),
+                phase: "approval".into(),
+                message: "Waiting".into(),
+                updated_at: "3".into(),
+                cwd: "/tmp/project".into(),
+                source: "hook".into(),
+                needs_approval: true,
+                needs_input: false,
+            },
+            IslandSession {
+                id: "bridge:codex:working".into(),
+                session_id: "working".into(),
+                provider: "codex".into(),
+                title: "Working".into(),
+                project: "Project".into(),
+                kind: "Codex CLI".into(),
+                phase: "processing".into(),
+                message: "Working".into(),
+                updated_at: "2".into(),
+                cwd: "/tmp/project".into(),
+                source: "hook".into(),
+                needs_approval: false,
+                needs_input: false,
+            },
+            IslandSession {
+                id: "process:codex-cli:1".into(),
+                session_id: "process:codex-cli:1".into(),
+                provider: "codex".into(),
+                title: "Process 1".into(),
+                project: "Project".into(),
+                kind: "Codex CLI".into(),
+                phase: "processing".into(),
+                message: "Process".into(),
+                updated_at: "刚刚".into(),
+                cwd: "/tmp/project".into(),
+                source: "process".into(),
+                needs_approval: false,
+                needs_input: false,
+            },
+            IslandSession {
+                id: "process:codex-cli:2".into(),
+                session_id: "process:codex-cli:2".into(),
+                provider: "codex".into(),
+                title: "Process 2".into(),
+                project: "Project".into(),
+                kind: "Codex CLI".into(),
+                phase: "processing".into(),
+                message: "Process".into(),
+                updated_at: "刚刚".into(),
+                cwd: "/tmp/project".into(),
+                source: "process".into(),
+                needs_approval: false,
+                needs_input: false,
+            },
+        ];
+
+        limit_codex_cli_island_sessions(&mut sessions, 3);
+
+        assert_eq!(sessions.len(), 3);
+        assert!(sessions.iter().any(|session| session.id == "bridge:codex:approval"));
+        assert!(!sessions
+            .iter()
+            .any(|session| session.id == "process:codex-cli:2"));
     }
 }

@@ -50,11 +50,39 @@ export function upsertSession(provider, nextSession) {
   if (index === -1) {
     sessions.push(nextSession);
   } else {
-    sessions[index] = { ...sessions[index], ...nextSession };
+    sessions[index] = mergeSession(sessions[index], nextSession);
   }
 
   sessions.sort((left, right) => String(right.lastActivityAt || "").localeCompare(String(left.lastActivityAt || "")));
   writeSessions(provider, sessions);
+}
+
+function mergeSession(current, nextSession) {
+  if (current?.needsApproval && !nextSession?.needsApproval) {
+    return {
+      ...current,
+      ...nextSession,
+      phase: current.phase || "need_approval",
+      needsApproval: true,
+      needsInput: false,
+      latestMessage: current.latestMessage || nextSession.latestMessage,
+      title: current.title || nextSession.title,
+    };
+  }
+
+  if (current?.needsInput && !nextSession?.needsApproval && !nextSession?.needsInput) {
+    return {
+      ...current,
+      ...nextSession,
+      phase: current.phase || "need_input",
+      needsApproval: false,
+      needsInput: true,
+      latestMessage: current.latestMessage || nextSession.latestMessage,
+      title: current.title || nextSession.title,
+    };
+  }
+
+  return { ...current, ...nextSession };
 }
 
 export function updateSession(provider, sessionId, update) {

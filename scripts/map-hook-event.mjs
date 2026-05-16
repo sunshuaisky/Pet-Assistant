@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   clearDecision,
+  readSessions,
   removeSession,
   updateSession,
   upsertSession,
@@ -119,8 +120,7 @@ function hashFallback(value) {
   return crypto.createHash("sha1").update(String(value || "session")).digest("hex").slice(0, 12);
 }
 
-function pickSessionId(provider, payload, options, cwd) {
-  const scopes = collectScopes(payload);
+function explicitSessionId(scopes, options) {
   return (
     options["session-id"] ||
     pick(scopes, [
@@ -138,7 +138,36 @@ function pickSessionId(provider, payload, options, cwd) {
     ]) ||
     process.env.PHOENIX_PET_SESSION_ID ||
     process.env.CODEX_SESSION_ID ||
-    process.env.CLAUDE_SESSION_ID ||
+    process.env.CLAUDE_SESSION_ID
+  );
+}
+
+function sessionIsActive(session) {
+  return (
+    session?.needsApproval ||
+    session?.needsInput ||
+    ["working", "started", "progress", "need_approval", "need_input"].includes(String(session?.phase || ""))
+  );
+}
+
+function relatedSessionId(provider, cwd) {
+  const normalizedCwd = String(cwd || "").trim();
+  if (!normalizedCwd) return "";
+
+  return (
+    readSessions(provider)
+      .filter((session) => sessionIsActive(session))
+      .filter((session) => String(session.cwd || "").trim() === normalizedCwd)
+      .sort((left, right) => String(right.lastActivityAt || "").localeCompare(String(left.lastActivityAt || "")))[0]
+      ?.sessionId || ""
+  );
+}
+
+function pickSessionId(provider, eventName, payload, options, cwd) {
+  const scopes = collectScopes(payload);
+  return (
+    explicitSessionId(scopes, options) ||
+    (["approval_requested", "input_requested"].includes(eventName) ? relatedSessionId(provider, cwd) : "") ||
     `${provider}-${hashFallback(cwd)}`
   );
 }
@@ -222,7 +251,7 @@ function buildSession(provider, eventName, payload, options) {
     process.env.CODEX_CWD ||
     process.env.CLAUDE_CWD ||
     process.cwd();
-  const sessionId = String(pickSessionId(provider, payload, options, cwd));
+  const sessionId = String(pickSessionId(provider, eventName, payload, options, cwd));
   const toolName = pick(scopes, ["tool_name", "toolName", "tool"]);
   const toolInput = pick(scopes, ["tool_input", "toolInput", "input"]);
   const state = mapEventToSessionState(eventName);

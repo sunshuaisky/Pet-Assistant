@@ -10,6 +10,7 @@ const convertFileSrc = window.__TAURI__?.core?.convertFileSrc;
 const listen = window.__TAURI__?.event?.listen;
 const tauriWindowApi = window.__TAURI__?.window;
 const appWindow = tauriWindowApi?.getCurrentWindow?.();
+const appRoot = document.querySelector("#app");
 
 const providerTitles = {
   claude: "Claude Code",
@@ -58,7 +59,9 @@ const PET_DRAG_DISTANCE = 7;
 const PASS_THROUGH_POLL_MS = 90;
 const SESSION_POLL_MS = 1000;
 const SESSION_HISTORY_POLL_MS = 2500;
+const PET_POSITION_STORAGE_KEY = "phoenix-pet-position";
 const SETTINGS_STORAGE_KEY = "phoenix-pet-settings";
+const EMPTY_HISTORY = [];
 
 const builtInPets = [
   {
@@ -167,31 +170,42 @@ function clampPetPosition(position) {
   };
 }
 
-function loadPetPosition() {
+function readJsonStorage(key, fallbackValue) {
   try {
-    const saved = JSON.parse(localStorage.getItem("phoenix-pet-position") || "null");
-    if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) return clampPetPosition(saved);
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallbackValue;
   } catch {
-    // Ignore invalid persisted state.
+    return fallbackValue;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage can fail in restricted browser contexts; keep runtime state usable.
+  }
+}
+
+function loadPetPosition() {
+  const saved = readJsonStorage(PET_POSITION_STORAGE_KEY, null);
+  if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) {
+    return clampPetPosition(saved);
   }
   return defaultPetPosition();
 }
 
 function savePetPosition(position) {
-  localStorage.setItem("phoenix-pet-position", JSON.stringify(clampPetPosition(position)));
+  writeJsonStorage(PET_POSITION_STORAGE_KEY, clampPetPosition(position));
 }
 
 function loadUserSettings() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || "null");
-    return normalizeUserSettings({ ...defaultUserSettings, ...saved });
-  } catch {
-    return normalizeUserSettings({ ...defaultUserSettings });
-  }
+  const saved = readJsonStorage(SETTINGS_STORAGE_KEY, null);
+  return normalizeUserSettings({ ...defaultUserSettings, ...(saved || {}) });
 }
 
 function saveUserSettings() {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.userSettings));
+  writeJsonStorage(SETTINGS_STORAGE_KEY, state.userSettings);
 }
 
 function normalizeUserSettings(settings) {
@@ -310,21 +324,21 @@ function renderProviderMark(provider) {
 
 function commitPetRename(id, value) {
   if (!setPetName(id, value)) {
-    state.toast = "名称不能为空";
     return false;
   }
 
-  const pet = petLibrary().find((item) => item.id === id);
   state.renamingPetId = "";
-  state.toast = pet ? `已改名为 ${pet.name}` : "已保存宠物名称";
   saveUserSettings();
   return true;
 }
 
+function cssAttributeValue(value) {
+  const text = String(value ?? "");
+  return window.CSS?.escape ? CSS.escape(text) : text.replace(/["\\]/g, "\\$&");
+}
+
 function petNameInput(id) {
-  return Array.from(document.querySelectorAll("[data-pet-name-input]")).find(
-    (input) => input.dataset.petNameInput === id,
-  );
+  return document.querySelector(`[data-pet-name-input="${cssAttributeValue(id)}"]`);
 }
 
 function petAssetSource(pet) {
@@ -350,7 +364,6 @@ const state = {
   route: "sessions",
   selectedId: "codex-local",
   selectedSetting: "display",
-  toast: "",
   sessions: fallbackSessions,
   integrations: fallbackIntegrations,
   historyBySessionId: {},
@@ -430,10 +443,15 @@ function sameData(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function setSessions(sessions, useFallback = false) {
+  const nextSessions = asArray(sessions);
   const previousSessions = state.sessions;
   const previousSelectedId = state.selectedId;
-  state.sessions = sessions.length || !useFallback ? sessions : fallbackSessions;
+  state.sessions = nextSessions.length || !useFallback ? nextSessions : fallbackSessions;
   if (!state.sessions.some((session) => session.id === state.selectedId)) {
     state.selectedId = activeSession().id;
   }
@@ -441,26 +459,37 @@ function setSessions(sessions, useFallback = false) {
 }
 
 function setIntegrations(integrations, useFallback = false) {
+  const nextIntegrations = asArray(integrations);
   const previousIntegrations = state.integrations;
-  state.integrations = integrations.length || !useFallback ? integrations : fallbackIntegrations;
+  state.integrations = nextIntegrations.length || !useFallback ? nextIntegrations : fallbackIntegrations;
   return !sameData(previousIntegrations, state.integrations);
 }
 
+let sessionsRefreshing = false;
+let integrationsRefreshing = false;
+let sessionsRefreshQueued = false;
+
 async function refreshSessions() {
-  let changed = false;
-  if (!invoke) {
-    changed = setSessions(fallbackSessions, true);
-    if (changed || !hasRendered) render();
+  if (sessionsRefreshing) {
+    sessionsRefreshQueued = true;
     return;
   }
 
+  sessionsRefreshing = true;
+  sessionsRefreshQueued = false;
+  let changed = false;
   try {
-    changed = setSessions(await invoke("list_sessions"));
-  } catch {
+    changed = setSessions(invoke ? await invoke("list_sessions") : fallbackSessions, true);
+  } catch (error) {
+    console.error("Failed to refresh sessions", error);
     changed = setSessions(fallbackSessions, true);
+  } finally {
+    sessionsRefreshing = false;
   }
+
   if (changed || !hasRendered) render();
-  refreshSessionHistory(changed);
+  if (invoke) refreshSessionHistory(changed);
+  if (sessionsRefreshQueued) refreshSessions();
 }
 
 async function refreshSessionHistory(force = false) {
@@ -472,17 +501,17 @@ async function refreshSessionHistory(force = false) {
 
   state.historyLoadingId = session.id;
   try {
-    const history = await invoke("list_session_history", {
+    const history = asArray(await invoke("list_session_history", {
       id: session.id,
       sessionId: session.sessionId,
       cwd: session.cwd,
-    });
+    }));
     if (state.historyLoadingId !== session.id) return;
 
-    const previous = state.historyBySessionId[session.id] || [];
+    const previous = state.historyBySessionId[session.id] || EMPTY_HISTORY;
     state.historyBySessionId = {
       ...state.historyBySessionId,
-      [session.id]: Array.isArray(history) ? history : [],
+      [session.id]: history,
     };
     if (!sameData(previous, state.historyBySessionId[session.id])) render();
   } catch {
@@ -498,42 +527,38 @@ async function refreshSessionHistory(force = false) {
 }
 
 async function refreshIntegrations() {
+  if (integrationsRefreshing) return;
+  integrationsRefreshing = true;
   let changed = false;
-  if (!invoke) {
+  try {
+    changed = setIntegrations(invoke ? await invoke("list_integrations") : fallbackIntegrations, true);
+  } catch (error) {
+    console.error("Failed to refresh integrations", error);
     changed = setIntegrations(fallbackIntegrations, true);
-    if (changed || !hasRendered) render();
-    return;
+  } finally {
+    integrationsRefreshing = false;
   }
 
-  try {
-    changed = setIntegrations(await invoke("list_integrations"));
-  } catch {
-    changed = setIntegrations(fallbackIntegrations, true);
-  }
   if (changed || !hasRendered) render();
 }
 
 async function focusSession(id) {
   try {
-    state.toast = invoke ? await invoke("focus_session", { id }) : `浏览器预览无法激活工具：${id}`;
+    if (invoke) await invoke("focus_session", { id });
     state.open = false;
     state.actionMenuOpen = false;
   } catch (error) {
-    state.toast = `跳回工具失败：${error}`;
+    console.error("Failed to focus session", error);
   }
   render();
 }
 
 async function decideSession(id, approved) {
   try {
-    state.toast = approved ? "正在发送批准" : "正在发送拒绝";
-    render();
-    state.toast = invoke
-      ? await invoke(approved ? "approve_session" : "reject_session", { id })
-      : `浏览器预览无法${approved ? "批准" : "拒绝"}真实审批：${id}`;
+    if (invoke) await invoke(approved ? "approve_session" : "reject_session", { id });
     await refreshSessions();
   } catch (error) {
-    state.toast = `审批失败：${error}`;
+    console.error("Failed to decide session", error);
   }
   render();
 }
@@ -628,7 +653,6 @@ function renderSessions() {
       </div>
       <article class="session-detail">
         <div class="session-detail-scroll">
-          ${needsApproval ? renderApprovalNotice(selected) : ""}
           ${renderSessionHistory(selected)}
         </div>
         ${renderSessionActions(selected, needsApproval, canFocus)}
@@ -641,8 +665,11 @@ function renderSessionActions(session, needsApproval, canFocus) {
   if (needsApproval) {
     return `
       <footer class="approval-actions">
-        <button class="primary" data-approve="${session.id}">批准</button>
-        <button class="danger" data-reject="${session.id}">拒绝</button>
+        ${renderApprovalNotice(session)}
+        <div class="approval-buttons">
+          <button class="primary" data-approve="${session.id}">批准</button>
+          <button class="danger" data-reject="${session.id}">拒绝</button>
+        </div>
       </footer>
     `;
   }
@@ -806,10 +833,12 @@ function historyRoleLabel(role) {
 }
 
 function renderApprovalNotice(session) {
+  const detail = session.message || "等待审批详情";
   return `
     <div class="approval-notice">
       <strong>等待审批</strong>
       <span>${escapeHtml(providerName(session.provider))} 正在等待允许或拒绝本次操作。</span>
+      <p>${escapeHtml(detail)}</p>
     </div>
   `;
 }
@@ -1024,13 +1053,14 @@ let hasRendered = false;
 let lastHistoryScrollSignature = "";
 
 function render() {
+  if (!appRoot) return;
+
   const session = activeSession();
   panelOpening = state.open && !lastRenderedOpenState;
   const shouldCheckHistoryScroll = panelOpening || state.route === "sessions";
-  document.querySelector("#app").innerHTML = `
+  appRoot.innerHTML = `
     <main class="app">
       ${renderPetHub(session)}
-      ${state.toast ? `<div class="toast">${escapeHtml(state.toast)}</div>` : ""}
     </main>
   `;
   lastRenderedOpenState = state.open;
@@ -1274,9 +1304,17 @@ async function configureOverlayWindow() {
 
 let petDrag = null;
 
+function petHubElement() {
+  return document.querySelector(".pet-hub");
+}
+
+function petTriggerElement() {
+  return document.querySelector(".pet-trigger");
+}
+
 function applyPetPosition(position) {
   state.petPosition = clampPetPosition(position);
-  const hub = document.querySelector(".pet-hub");
+  const hub = petHubElement();
   if (!hub) return;
   hub.style.setProperty("--pet-x", `${state.petPosition.x}px`);
   hub.style.setProperty("--pet-y", `${state.petPosition.y}px`);
@@ -1303,7 +1341,7 @@ function handlePetPointerDown(event) {
       state.open = false;
       state.actionMenuOpen = false;
       setDragAction("running-right");
-      const hub = document.querySelector(".pet-hub");
+      const hub = petHubElement();
       hub?.classList.add("is-dragging");
       hub?.classList.remove("is-open", "show-actions");
       trigger.classList.add("is-dragging");
@@ -1323,9 +1361,10 @@ function handlePetPointerMove(event) {
       petDrag.dragging = true;
       state.open = false;
       state.actionMenuOpen = false;
-      document.querySelector(".pet-hub")?.classList.add("is-dragging");
-      document.querySelector(".pet-hub")?.classList.remove("is-open", "show-actions");
-      document.querySelector(".pet-trigger")?.classList.add("is-dragging");
+      const hub = petHubElement();
+      hub?.classList.add("is-dragging");
+      hub?.classList.remove("is-open", "show-actions");
+      petTriggerElement()?.classList.add("is-dragging");
     } else {
       return;
     }
@@ -1356,10 +1395,10 @@ function handlePetPointerUp(event) {
   window.clearTimeout(petDrag.timer);
   const wasDragging = petDrag.dragging;
   const wasMoved = petDrag.moved;
-  const trigger = event.target.closest?.(".pet-trigger") || document.querySelector(".pet-trigger");
+  const trigger = event.target.closest?.(".pet-trigger") || petTriggerElement();
   trigger?.releasePointerCapture?.(event.pointerId);
   trigger?.classList.remove("is-dragging");
-  document.querySelector(".pet-hub")?.classList.remove("is-dragging");
+  petHubElement()?.classList.remove("is-dragging");
 
   petDrag = null;
   state.dragAction = null;
@@ -1425,7 +1464,6 @@ document.addEventListener("click", async (event) => {
       state.route = "settings";
       state.selectedSetting = "pet";
       state.open = true;
-      state.toast = `已切换到 ${pet.name}`;
       saveUserSettings();
       startPetAnimator(true);
     }
@@ -1445,20 +1483,14 @@ document.addEventListener("click", async (event) => {
     state.route = "settings";
     state.selectedSetting = "pet";
     state.open = true;
-    state.toast = removed ? `已移除 ${removed.name}` : "已移除宠物";
     saveUserSettings();
     render();
     return;
   }
   if (target.dataset.settingAction === "import-pet") {
     if (!invoke) {
-      state.toast = "浏览器预览无法导入文件";
-      render();
       return;
     }
-
-    state.toast = "正在导入宠物";
-    render();
 
     try {
       const imported = normalizePet({ ...(await invoke("import_pet_asset")), source: "imported" });
@@ -1475,11 +1507,10 @@ document.addEventListener("click", async (event) => {
       state.route = "settings";
       state.selectedSetting = "pet";
       state.open = true;
-      state.toast = `已导入 ${imported.name}`;
       saveUserSettings();
       startPetAnimator(true);
     } catch (error) {
-      state.toast = String(error).includes("已取消") ? "已取消导入" : `导入失败：${error}`;
+      if (!String(error).includes("已取消")) console.error("Failed to import pet", error);
     }
 
     render();
@@ -1488,7 +1519,6 @@ document.addEventListener("click", async (event) => {
   if (target.dataset.settingAction === "reset-position") {
     state.petPosition = defaultPetPosition();
     savePetPosition(state.petPosition);
-    state.toast = "已重置到右下角";
     render();
     return;
   }
@@ -1505,14 +1535,11 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (target.dataset.settingAction === "refresh-integrations") {
-    state.toast = "正在刷新集成状态";
-    render();
     await refreshIntegrations();
     await refreshSessions();
     state.route = "settings";
     state.selectedSetting = "integrations";
     state.open = true;
-    state.toast = "已刷新集成状态";
     render();
     return;
   }
