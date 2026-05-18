@@ -587,6 +587,8 @@ async function focusSession(id) {
 async function decideSession(id, approved) {
   try {
     if (invoke) await invoke(approved ? "approve_session" : "reject_session", { id });
+    state.open = false;
+    state.actionMenuOpen = false;
     await refreshSessions();
   } catch (error) {
     console.error("Failed to decide session", error);
@@ -597,6 +599,8 @@ async function decideSession(id, approved) {
 async function allowSessionApprovals(id) {
   try {
     if (invoke) await invoke("approve_session_for_session", { id });
+    state.open = false;
+    state.actionMenuOpen = false;
     await refreshSessions();
   } catch (error) {
     console.error("Failed to allow session approvals", error);
