@@ -61,6 +61,7 @@ const SESSION_POLL_MS = 5000;
 const SESSION_HISTORY_POLL_MS = 3500;
 const PET_POSITION_STORAGE_KEY = "phoenix-pet-position";
 const SETTINGS_STORAGE_KEY = "phoenix-pet-settings";
+const CHAT_STORAGE_KEY = "phoenix-pet-chat";
 const EMPTY_HISTORY = [];
 
 const builtInPets = [
@@ -89,6 +90,12 @@ const settingSections = [
   { id: "display", title: "显示", subtitle: "宠物标记与位置" },
   { id: "pet", title: "宠物", subtitle: "导入与切换" },
   { id: "integrations", title: "集成", subtitle: "工具检测与跳转" },
+];
+
+const routeItems = [
+  { id: "sessions", title: "会话" },
+  { id: "chat", title: "聊天" },
+  { id: "settings", title: "设置" },
 ];
 
 const petAnimations = {
@@ -206,6 +213,27 @@ function loadUserSettings() {
 
 function saveUserSettings() {
   writeJsonStorage(SETTINGS_STORAGE_KEY, state.userSettings);
+}
+
+function normalizeChatMessages(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .map((message) => ({
+      id: String(message?.id || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+      role: message?.role === "user" ? "user" : "assistant",
+      text: String(message?.text || "").trim().slice(0, 1200),
+      timestamp: message?.timestamp || new Date().toISOString(),
+    }))
+    .filter((message) => message.text)
+    .slice(-80);
+}
+
+function loadChatMessages() {
+  return normalizeChatMessages(readJsonStorage(CHAT_STORAGE_KEY, []));
+}
+
+function saveChatMessages() {
+  writeJsonStorage(CHAT_STORAGE_KEY, state.chatMessages);
 }
 
 function normalizeUserSettings(settings) {
@@ -370,6 +398,8 @@ const state = {
   historyLoadingId: "",
   petPosition: loadPetPosition(),
   userSettings: loadUserSettings(),
+  chatMessages: loadChatMessages(),
+  chatDraft: "",
   petAction: "sleeping",
   dragAction: null,
   actionMenuOpen: false,
@@ -386,6 +416,18 @@ function phaseLabel(phase) {
     archived: "已归档",
     waiting: "未运行",
   }[phase] ?? "空闲";
+}
+
+function phaseTone(phase) {
+  return {
+    approval: "attention",
+    input: "input",
+    processing: "processing",
+    completed: "success",
+    failed: "danger",
+    archived: "muted",
+    waiting: "idle",
+  }[phase] ?? "idle";
 }
 
 function integrationStatusLabel(status) {
@@ -688,8 +730,19 @@ function renderPetHub(session) {
         <header class="panel-header">
           <div class="panel-title">
             <strong>${escapeHtml(pet.name)}</strong>
-            <span>AI 工具与宠物面板</span>
+            <span>${escapeHtml(phaseLabel(session.phase))} · ${escapeHtml(sessionDisplayTitle(session))}</span>
           </div>
+          <nav aria-label="面板视图">
+            ${routeItems.map((item) => `
+              <button
+                type="button"
+                class="${state.route === item.id ? "active" : ""}"
+                data-panel-route="${item.id}"
+              >
+                ${item.title}
+              </button>
+            `).join("")}
+          </nav>
           <button class="panel-close" type="button" data-panel-close aria-label="关闭功能面板">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18"></path>
@@ -697,9 +750,107 @@ function renderPetHub(session) {
             </svg>
           </button>
         </header>
-        ${state.route === "sessions" ? renderSessions() : renderSettings()}
+        ${state.route === "sessions" ? renderSessions() : state.route === "chat" ? renderChat() : renderSettings()}
       </div>
     </section>
+  `;
+}
+
+function chatInput() {
+  return document.querySelector("[data-chat-input]");
+}
+
+function appendChatMessage(role, text) {
+  const message = {
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role,
+    text: String(text || "").trim().slice(0, 1200),
+    timestamp: new Date().toISOString(),
+  };
+  if (!message.text) return null;
+  state.chatMessages = normalizeChatMessages([...state.chatMessages, message]);
+  saveChatMessages();
+  return message;
+}
+
+function petChatReply(text) {
+  const session = selectedSession();
+  const lower = text.toLowerCase();
+  if (/审批|批准|拒绝|approval/.test(lower)) {
+    return session.needsApproval || session.phase === "approval"
+      ? `我看到 ${providerName(session.provider)} 正在等审批。你可以回到“会话”页查看详情，再选择批准、允许本次会话或拒绝。`
+      : "当前没有待审批事项。你可以继续工作，我会在有审批或输入请求时提醒你。";
+  }
+  if (/状态|运行|会话|进度/.test(lower)) {
+    return `现在选中的会话是“${sessionDisplayTitle(session)}”，状态是“${phaseLabel(session.phase)}”。${session.message || "暂时没有新的状态消息。"}`;
+  }
+  if (/集成|工具|codex|claude|gemini|cursor/.test(lower)) {
+    const running = state.integrations.filter((integration) => integration.running).length;
+    const installed = state.integrations.filter((integration) => integration.installed).length;
+    return `我检测到 ${running} 个正在运行的集成，${installed} 个已安装集成。需要跳回工具时，可以去“设置”的“集成”页操作。`;
+  }
+  if (/宠物|名字|外观|导入/.test(lower)) {
+    return `当前宠物是 ${currentPet().name}。你可以在“设置”的“宠物”页改名、切换或导入新的宠物文件。`;
+  }
+  return "我可以帮你看会话状态、审批提醒、集成检测和宠物设置。你也可以直接问我“现在状态如何”或“有没有待审批”。";
+}
+
+function submitChatMessage() {
+  const input = chatInput();
+  const text = (input?.value || state.chatDraft).trim();
+  if (!text) return;
+  appendChatMessage("user", text);
+  state.chatDraft = "";
+  appendChatMessage("assistant", petChatReply(text));
+  render();
+}
+
+function renderChat() {
+  const pet = currentPet();
+  const messages = state.chatMessages.length
+    ? state.chatMessages
+    : [
+        {
+          id: "chat-empty",
+          role: "assistant",
+          text: `我是 ${pet.name}，可以帮你快速查看会话、审批、集成和宠物设置。`,
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+  return `
+    <section class="chat-layout" aria-label="${escapeHtml(pet.name)} 聊天">
+      <div class="chat-head">
+        ${renderPetPreview(pet)}
+        <div>
+          <h2>和 ${escapeHtml(pet.name)} 聊天</h2>
+          <p>轻量助手，先处理状态问答；后续可以接入真实模型。</p>
+        </div>
+      </div>
+      <div class="chat-thread" aria-live="polite">
+        ${messages.map(renderChatMessage).join("")}
+      </div>
+      <form class="chat-composer" data-chat-form>
+        <textarea
+          data-chat-input
+          rows="2"
+          maxlength="1200"
+          placeholder="问问当前状态、审批、集成或宠物设置..."
+        >${escapeHtml(state.chatDraft)}</textarea>
+        <button class="primary" type="submit">发送</button>
+      </form>
+    </section>
+  `;
+}
+
+function renderChatMessage(message) {
+  return `
+    <article class="chat-message ${message.role}">
+      <div class="chat-bubble">
+        <span>${message.role === "user" ? "你" : escapeHtml(currentPet().name)}</span>
+        <p>${escapeHtml(message.text)}</p>
+      </div>
+    </article>
   `;
 }
 
@@ -708,22 +859,57 @@ function renderSessions() {
   const integration = effectiveIntegrationForSession(selected);
   const canFocus = integration?.focusable && (integration.running || integration.installed);
   const needsApproval = selected.needsApproval || selected.phase === "approval";
+  const activeCount = state.sessions.filter((session) => session.phase === "processing").length;
+  const attentionCount = state.sessions.filter(
+    (session) => session.needsApproval || session.needsInput || session.phase === "approval" || session.phase === "input",
+  ).length;
   return `
     <div class="sessions-layout">
-      <div class="session-list">
+      <div class="session-list" aria-label="会话列表">
+        <div class="session-list-head">
+          <span>${state.sessions.length || 0} 个会话</span>
+          <b>${attentionCount ? `${attentionCount} 个待处理` : activeCount ? `${activeCount} 个运行中` : "状态稳定"}</b>
+        </div>
         ${
           state.sessions.length
             ? state.sessions.map(renderSessionRow).join("")
-            : `<div class="empty-state">未检测到运行中的集成</div>`
+            : `<div class="empty-state">
+                <strong>还没有捕获到会话</strong>
+                <span>启动 Codex、Claude Code 或 Gemini 后，这里会显示审批、输入和运行状态。</span>
+              </div>`
         }
       </div>
       <article class="session-detail">
         <div class="session-detail-scroll">
+          ${renderSessionSummary(selected)}
           ${renderSessionHistory(selected)}
         </div>
         ${renderSessionActions(selected, needsApproval, canFocus)}
       </article>
     </div>
+  `;
+}
+
+function renderSessionSummary(session) {
+  const integration = effectiveIntegrationForSession(session);
+  const tone = phaseTone(session.phase);
+  const status = session.needsApproval || session.needsInput ? "需要你处理" : phaseLabel(session.phase);
+  return `
+    <section class="session-summary ${tone}">
+      <div class="detail-topline">
+        ${renderProviderMark(session.provider)}
+        <div>
+          <span>${escapeHtml(providerName(session.provider))} · ${escapeHtml(session.kind || integration?.kind || "会话")}</span>
+          <h2>${escapeHtml(sessionDisplayTitle(session))}</h2>
+        </div>
+      </div>
+      <p class="session-current-message">${escapeHtml(session.message || "等待新的事件。")}</p>
+      <div class="status-strip" aria-label="会话状态摘要">
+        <span><b>${escapeHtml(status)}</b>状态</span>
+        <span><b>${escapeHtml(integration ? integrationStatusLabel(integration.status) : "界面状态")}</b>集成</span>
+        <span><b>${escapeHtml(session.updatedAt || "刚刚")}</b>更新</span>
+      </div>
+    </section>
   `;
 }
 
@@ -754,14 +940,19 @@ function renderSessionActions(session, needsApproval, canFocus) {
 
 function renderSessionHistory(session) {
   const history = state.historyBySessionId[session.id] || [];
+  const isLoading = state.historyLoadingId === session.id;
 
   return `
     <section class="session-history" aria-label="当前会话历史消息">
+      <header class="history-header">
+        <span>会话动态</span>
+        <small>${history.length ? `${history.length} 条` : isLoading ? "读取中" : "暂无记录"}</small>
+      </header>
       <div class="history-list">
         ${
           history.length
             ? history.map(renderHistoryItem).join("")
-            : `<div class="history-empty">正在读取会话历史</div>`
+            : `<div class="history-empty">${isLoading ? "正在读取会话历史" : "还没有可展示的历史消息"}</div>`
         }
       </div>
     </section>
@@ -985,7 +1176,10 @@ function renderSettings() {
 function renderSettingsPanel(id) {
   if (id === "pet") {
     return `
-      <h2>宠物</h2>
+      <div class="settings-panel-head">
+        <h2>宠物</h2>
+        <p>管理当前外观、名称和导入资源。</p>
+      </div>
       <div class="pet-library">
         ${petLibrary().map(renderPetRow).join("")}
       </div>
@@ -997,7 +1191,10 @@ function renderSettingsPanel(id) {
   }
   if (id === "integrations") {
     return `
-      <h2>集成</h2>
+      <div class="settings-panel-head">
+        <h2>集成</h2>
+        <p>检查本机 AI 工具，并在需要时跳回对应应用。</p>
+      </div>
       <div class="integration-list">
         ${state.integrations.map(renderIntegrationRow).join("")}
       </div>
@@ -1008,10 +1205,13 @@ function renderSettingsPanel(id) {
     `;
   }
   return `
-    <h2>显示</h2>
+    <div class="settings-panel-head">
+      <h2>显示</h2>
+      <p>控制桌面宠物在平时和提醒场景中的信息密度。</p>
+    </div>
     <div class="setting-group">
-      ${renderSettingToggle("显示会话徽标", "showBadge")}
-      ${renderSettingToggle("显示状态标签", "showStatus")}
+      ${renderSettingToggle("显示会话徽标", "showBadge", "在宠物旁标记待审批或运行中的会话数量。")}
+      ${renderSettingToggle("显示状态标签", "showStatus", "保留一个短标签，方便扫一眼知道当前状态。")}
     </div>
     <div class="settings-actions">
       <button class="primary" type="button" data-setting-action="reset-position">重置到右下角</button>
@@ -1105,10 +1305,13 @@ function renderIntegrationRow(integration) {
   `;
 }
 
-function renderSettingToggle(label, key) {
+function renderSettingToggle(label, key, description = "") {
   return `
     <label class="setting-line">
-      <span>${label}</span>
+      <span>
+        <b>${label}</b>
+        ${description ? `<small>${description}</small>` : ""}
+      </span>
       <input type="checkbox" data-setting-toggle="${key}" ${state.userSettings[key] ? "checked" : ""} />
     </label>
   `;
@@ -1118,6 +1321,7 @@ let lastRenderedOpenState = state.open;
 let panelOpening = false;
 let hasRendered = false;
 let lastHistoryScrollSignature = "";
+let lastChatScrollSignature = "";
 
 function render() {
   if (!appRoot) return;
@@ -1136,6 +1340,7 @@ function render() {
   startPetAnimator();
   syncPetBehavior();
   syncHistoryScroll(shouldCheckHistoryScroll);
+  syncChatScroll(panelOpening || state.route === "chat");
 }
 
 function syncHistoryScroll(force = false) {
@@ -1152,6 +1357,22 @@ function syncHistoryScroll(force = false) {
     const historyList = document.querySelector(".history-list");
     if (!historyList) return;
     historyList.scrollTop = historyList.scrollHeight;
+  });
+}
+
+function syncChatScroll(force = false) {
+  if (!state.open || state.route !== "chat") return;
+
+  const latest = state.chatMessages[state.chatMessages.length - 1];
+  const signature = `${state.chatMessages.length}:${latest?.id || ""}`;
+  if (!force && signature === lastChatScrollSignature) return;
+  lastChatScrollSignature = signature;
+
+  window.requestAnimationFrame(() => {
+    const thread = document.querySelector(".chat-thread");
+    if (!thread) return;
+    thread.scrollTop = thread.scrollHeight;
+    chatInput()?.focus();
   });
 }
 
@@ -1492,6 +1713,7 @@ function handlePetPointerUp(event) {
 document.addEventListener("click", async (event) => {
   const target = event.target.closest?.("button");
   if (!target) return;
+  if (target.closest?.("[data-chat-form]")) return;
 
   if (target.dataset.panelClose !== undefined) {
     state.open = false;
@@ -1650,6 +1872,17 @@ document.addEventListener("change", (event) => {
   render();
 });
 
+document.addEventListener("input", (event) => {
+  if (event.target.dataset?.chatInput === undefined) return;
+  state.chatDraft = event.target.value;
+});
+
+document.addEventListener("submit", (event) => {
+  if (event.target.dataset?.chatForm === undefined) return;
+  event.preventDefault();
+  submitChatMessage();
+});
+
 document.addEventListener("pointerdown", handlePetPointerDown);
 document.addEventListener("pointermove", handlePetPointerMove);
 document.addEventListener("pointerup", handlePetPointerUp);
@@ -1673,6 +1906,11 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     state.renamingPetId = "";
     render();
+    return;
+  }
+  if (event.target.dataset?.chatInput !== undefined && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    submitChatMessage();
     return;
   }
   if (event.key === "Escape" && (state.open || state.actionMenuOpen)) {
