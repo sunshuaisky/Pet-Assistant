@@ -272,6 +272,10 @@ svg {
   color: rgba(255, 255, 255, 0.9);
 }
 
+.pet-action-menu button.danger {
+  color: #ffb3b3;
+}
+
 .pet-action-menu button:hover,
 .pet-action-menu button.active {
   background: rgba(255, 255, 255, 0.14);
@@ -913,14 +917,16 @@ svg {
 }
 
 .session-detail footer.approval-actions {
-  align-items: flex-end;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
 .approval-buttons {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .session-detail footer button,

@@ -20,6 +20,10 @@ export function decisionPath(provider, sessionId) {
   return path.join(providerRoot(provider), "decisions", `${safeSessionFileName(sessionId)}.json`);
 }
 
+export function sessionAllowsPath(provider) {
+  return path.join(providerRoot(provider), "session-allows.json");
+}
+
 export function safeSessionFileName(sessionId) {
   const safe = String(sessionId || "")
     .replace(/[^A-Za-z0-9._-]/g, "_")
@@ -129,6 +133,45 @@ export function writeDecision(provider, sessionId, decision, message = "") {
       2,
     )}\n`,
   );
+}
+
+export function readSessionAllows(provider) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(sessionAllowsPath(provider), "utf8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeSessionAllows(provider, allows) {
+  const filePath = sessionAllowsPath(provider);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(allows, null, 2)}\n`);
+}
+
+export function allowSession(provider, sessionId, cwd = "") {
+  const allows = readSessionAllows(provider);
+  const next = {
+    sessionId,
+    cwd,
+    allowedAt: new Date().toISOString(),
+  };
+  const index = allows.findIndex((entry) => entry.sessionId === sessionId);
+  if (index === -1) {
+    allows.push(next);
+  } else {
+    allows[index] = { ...allows[index], ...next };
+  }
+  writeSessionAllows(provider, allows);
+}
+
+export function isSessionAllowed(provider, sessionId, cwd = "") {
+  const normalizedCwd = String(cwd || "").trim();
+  return readSessionAllows(provider).some((entry) => {
+    if (entry.sessionId === sessionId) return true;
+    return normalizedCwd && String(entry.cwd || "").trim() === normalizedCwd;
+  });
 }
 
 export async function waitForDecision(provider, sessionId, options = {}) {

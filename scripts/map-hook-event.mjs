@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import {
   clearDecision,
+  allowSession,
+  isSessionAllowed,
   readSessions,
   removeSession,
   updateSession,
@@ -295,7 +297,9 @@ function buildSession(provider, eventName, payload, options) {
 }
 
 function permissionOutput(decision) {
-  const approved = ["approve", "approved", "allow", "allowed"].includes(String(decision?.decision || "").toLowerCase());
+  const approved = ["approve", "approved", "allow", "allowed", "approve_session", "allow_session"].includes(
+    String(decision?.decision || "").toLowerCase(),
+  );
   const body = {
     behavior: approved ? "allow" : "deny",
   };
@@ -331,6 +335,17 @@ async function main() {
     clearDecision(provider, session.sessionId);
   }
 
+  if (normalizedEvent === "approval_requested" && isSessionAllowed(provider, session.sessionId, session.cwd)) {
+    updateSession(provider, session.sessionId, {
+      phase: "working",
+      needsApproval: false,
+      needsInput: false,
+      latestMessage: "Allowed for this session from Phoenix Pet",
+    });
+    process.stdout.write(`${JSON.stringify(permissionOutput({ decision: "approve" }))}\n`);
+    return;
+  }
+
   upsertSession(provider, session);
 
   if (normalizedEvent !== "approval_requested") {
@@ -338,12 +353,21 @@ async function main() {
   }
 
   const decision = await waitForDecision(provider, session.sessionId);
-  const approved = ["approve", "approved", "allow", "allowed"].includes(String(decision.decision || "").toLowerCase());
+  const decisionKind = String(decision.decision || "").toLowerCase();
+  const approved = ["approve", "approved", "allow", "allowed", "approve_session", "allow_session"].includes(decisionKind);
+  if (["approve_session", "allow_session"].includes(decisionKind)) {
+    allowSession(provider, session.sessionId, session.cwd);
+  }
   updateSession(provider, session.sessionId, {
     phase: approved ? "working" : "error",
     needsApproval: false,
     needsInput: false,
-    latestMessage: approved ? "Approved from Phoenix Pet" : decision.message || "Denied from Phoenix Pet",
+    latestMessage:
+      decisionKind === "approve_session" || decisionKind === "allow_session"
+        ? "Allowed for this session from Phoenix Pet"
+        : approved
+          ? "Approved from Phoenix Pet"
+          : decision.message || "Denied from Phoenix Pet",
   });
 
   process.stdout.write(`${JSON.stringify(permissionOutput(decision))}\n`);

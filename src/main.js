@@ -563,6 +563,28 @@ async function decideSession(id, approved) {
   render();
 }
 
+async function allowSessionApprovals(id) {
+  try {
+    if (invoke) await invoke("approve_session_for_session", { id });
+    await refreshSessions();
+  } catch (error) {
+    console.error("Failed to allow session approvals", error);
+  }
+  render();
+}
+
+async function quitApp() {
+  try {
+    if (invoke) {
+      await invoke("quit_app");
+      return;
+    }
+    await appWindow?.close?.();
+  } catch (error) {
+    console.error("Failed to quit app", error);
+  }
+}
+
 function petPanelPlacement(position) {
   const horizontal = position.x > window.innerWidth / 2 ? "align-right" : "align-left";
   const vertical = position.y > window.innerHeight / 2 ? "above" : "below";
@@ -590,6 +612,15 @@ function renderPetActionMenu() {
         data-panel-route="settings"
       >
         设置
+      </button>
+      <span class="menu-separator" aria-hidden="true"></span>
+      <button
+        class="menu-command danger"
+        type="button"
+        role="menuitem"
+        data-app-quit
+      >
+        退出
       </button>
     </div>
   `;
@@ -668,6 +699,7 @@ function renderSessionActions(session, needsApproval, canFocus) {
         ${renderApprovalNotice(session)}
         <div class="approval-buttons">
           <button class="primary" data-approve="${session.id}">批准</button>
+          <button class="primary" data-approve-session="${session.id}">本次会话允许</button>
           <button class="danger" data-reject="${session.id}">拒绝</button>
         </div>
       </footer>
@@ -1426,6 +1458,10 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
+  if (target.dataset.appQuit !== undefined) {
+    await quitApp();
+    return;
+  }
   if (target.dataset.panelRoute) {
     state.route = target.dataset.panelRoute;
     if (target.dataset.settingTarget) state.selectedSetting = target.dataset.settingTarget;
@@ -1528,6 +1564,10 @@ document.addEventListener("click", async (event) => {
   }
   if (target.dataset.approve) {
     await decideSession(target.dataset.approve, true);
+    return;
+  }
+  if (target.dataset.approveSession) {
+    await allowSessionApprovals(target.dataset.approveSession);
     return;
   }
   if (target.dataset.reject) {

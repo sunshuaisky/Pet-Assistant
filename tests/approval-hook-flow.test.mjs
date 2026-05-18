@@ -166,8 +166,41 @@ assert.equal(sessions.length, 1);
 assert.equal(sessions[0].sessionId, "related-working-session");
 assert.equal(sessions[0].phase, "need_approval");
 
-writeDecision("codex", "related-working-session", "approve", "Approved by test");
+writeDecision("codex", "related-working-session", "approve_session", "Allowed for this session by test");
 await relatedPromise;
+
+const autoAllowedChild = spawn(
+  process.execPath,
+  [path.join(repoRoot, "scripts", "map-hook-event.mjs"), "approval_requested", "--provider", "codex", "--quiet", "1"],
+  {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      PHOENIX_PET_HOME: tempRoot,
+      PHOENIX_PET_APPROVAL_TIMEOUT_MS: "5000",
+      PHOENIX_PET_APPROVAL_POLL_MS: "50",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  },
+);
+const autoAllowedPromise = collectProcess(autoAllowedChild);
+autoAllowedChild.stdin.end(
+  `${JSON.stringify({
+    cwd: path.join(tempRoot, "Related"),
+    hook_event_name: "PermissionRequest",
+    tool_name: "exec_command",
+    tool_input: { cmd: "touch auto-allowed.txt" },
+  })}\n`,
+);
+const autoAllowed = JSON.parse((await autoAllowedPromise).stdout);
+assert.deepEqual(autoAllowed, {
+  hookSpecificOutput: {
+    hookEventName: "PermissionRequest",
+    decision: {
+      behavior: "allow",
+    },
+  },
+});
 
 const promptChild = spawn(
   process.execPath,

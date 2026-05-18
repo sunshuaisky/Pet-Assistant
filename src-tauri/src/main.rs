@@ -218,8 +218,18 @@ fn approve_session(id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn approve_session_for_session(id: String) -> Result<String, String> {
+    resolve_approval_for_session(&id)
+}
+
+#[tauri::command]
 fn reject_session(id: String) -> Result<String, String> {
     resolve_approval(&id, false)
+}
+
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[tauri::command]
@@ -1497,6 +1507,23 @@ fn resolve_approval(id: &str, approved: bool) -> Result<String, String> {
     })
 }
 
+fn resolve_approval_for_session(id: &str) -> Result<String, String> {
+    let (provider, session_id) = resolve_bridge_session_id(id)
+        .ok_or_else(|| "没有找到可审批的真实 hook 会话".to_string())?;
+
+    write_session_allow(&provider, &session_id)?;
+    write_approval_decision_value(&provider, &session_id, "approve_session", "Allowed for this session from Phoenix Pet")?;
+    update_bridge_session(&provider, &session_id, |session| {
+        session.needs_approval = false;
+        session.needs_input = false;
+        session.phase = "working".into();
+        session.latest_message = Some("本次会话已允许，等待工具继续".into());
+        session.last_activity_at = now_millis_string();
+    })?;
+
+    Ok("已允许本次会话的后续审批".into())
+}
+
 fn resolve_bridge_session_id(id: &str) -> Option<(String, String)> {
     if let Some(parsed) = parse_bridge_ui_id(id) {
         return Some(parsed);
@@ -1537,6 +1564,15 @@ fn bridge_decision_path(provider: &str, session_id: &str) -> Option<PathBuf> {
     )
 }
 
+fn bridge_session_allows_path(provider: &str) -> Option<PathBuf> {
+    Some(
+        bridge_root()?
+            .join("providers")
+            .join(provider)
+            .join("session-allows.json"),
+    )
+}
+
 fn load_bridge_sessions(provider: &str) -> Vec<BridgeSession> {
     let Some(path) = bridge_sessions_path(provider) else {
         return Vec::new();
@@ -1572,23 +1608,70 @@ where
 }
 
 fn write_approval_decision(provider: &str, session_id: &str, approved: bool) -> Result<(), String> {
+    write_approval_decision_value(
+        provider,
+        session_id,
+        if approved { "approve" } else { "deny" },
+        if approved {
+            "Approved from Phoenix Pet"
+        } else {
+            "Denied from Phoenix Pet"
+        },
+    )
+}
+
+fn write_approval_decision_value(
+    provider: &str,
+    session_id: &str,
+    decision_value: &str,
+    message: &str,
+) -> Result<(), String> {
     let path = bridge_decision_path(provider, session_id)
         .ok_or_else(|| "无法定位 Phoenix Pet 审批目录".to_string())?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| format!("无法创建审批目录：{error}"))?;
     }
     let decision = ApprovalDecision {
-        decision: if approved { "approve" } else { "deny" }.into(),
-        message: if approved {
-            "Approved from Phoenix Pet".into()
-        } else {
-            "Denied from Phoenix Pet".into()
-        },
+        decision: decision_value.into(),
+        message: message.into(),
         decided_at: now_millis_string(),
     };
     let contents = serde_json::to_string_pretty(&decision)
         .map_err(|error| format!("无法序列化审批：{error}"))?;
     fs::write(path, format!("{contents}\n")).map_err(|error| format!("无法写入审批结果：{error}"))
+}
+
+fn write_session_allow(provider: &str, session_id: &str) -> Result<(), String> {
+    let path = bridge_session_allows_path(provider)
+        .ok_or_else(|| "无法定位 Phoenix Pet 会话允许目录".to_string())?;
+    let cwd = load_bridge_sessions(provider)
+        .into_iter()
+        .find(|session| session.session_id == session_id)
+        .map(|session| session.cwd)
+        .unwrap_or_default();
+    let mut allows = if let Ok(contents) = fs::read_to_string(&path) {
+        serde_json::from_str::<Vec<serde_json::Value>>(&contents).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    allows.retain(|entry| {
+        entry
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .map(|value| value != session_id)
+            .unwrap_or(true)
+    });
+    allows.push(serde_json::json!({
+        "sessionId": session_id,
+        "cwd": cwd,
+        "allowedAt": now_millis_string(),
+    }));
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("无法创建会话允许目录：{error}"))?;
+    }
+    let contents = serde_json::to_string_pretty(&allows)
+        .map_err(|error| format!("无法序列化会话允许状态：{error}"))?;
+    fs::write(path, format!("{contents}\n")).map_err(|error| format!("无法写入会话允许状态：{error}"))
 }
 
 fn decision_file_stem(session_id: &str) -> String {
@@ -1954,11 +2037,13 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             approve_session,
+            approve_session_for_session,
             import_pet_asset,
             list_integrations,
             list_session_history,
             list_sessions,
             focus_session,
+            quit_app,
             reject_session
         ])
         .setup(|app| {
