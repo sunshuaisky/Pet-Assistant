@@ -106,6 +106,17 @@ def extract_grid_frames(strip: Image.Image, frame_count: int, source_grid: str) 
     return frames
 
 
+def edge_alpha_counts(frame: Image.Image, inset: int = 4) -> dict[str, int]:
+    alpha = frame.getchannel("A")
+    width, height = frame.size
+    return {
+        "left": sum(1 for value in alpha.crop((0, 0, inset, height)).tobytes() if value > 16),
+        "right": sum(1 for value in alpha.crop((width - inset, 0, width, height)).tobytes() if value > 16),
+        "top": sum(1 for value in alpha.crop((0, 0, width, inset)).tobytes() if value > 16),
+        "bottom": sum(1 for value in alpha.crop((0, height - inset, width, height)).tobytes() if value > 16),
+    }
+
+
 def extract_frames(
     source: Path,
     frame_count: int,
@@ -224,7 +235,10 @@ def frame_metrics(frames: list[Image.Image]) -> list[dict[str, object]]:
             {
                 "index": index,
                 "bbox": bbox,
+                "bbox_width": 0 if bbox is None else bbox[2] - bbox[0],
+                "bbox_height": 0 if bbox is None else bbox[3] - bbox[1],
                 "alpha_pixels": sum(1 for value in alpha.tobytes() if value > 16),
+                "edge_alpha": edge_alpha_counts(frame),
             }
         )
     return metrics

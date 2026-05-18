@@ -1,16 +1,16 @@
 {
   "ok": true,
   "label": "play-wand",
-  "source": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/generated/play-wand-16-v2-source.png",
+  "source": "/Users/phoenixicarus/Documents/WorkSpace/Phoenix-Pet/hatch-runs/tuxie-fluid/generated/play-wand-16-v3-source.png",
   "frames": 16,
-  "method": "grid:2x8",
+  "method": "grid:4x4",
   "chroma_key": {
     "rgb": [
       0,
       255,
       255
     ],
-    "threshold": 120.0
+    "threshold": 160.0
   },
   "empty_frames": [],
   "outputs": {
@@ -41,161 +41,289 @@
       "index": 0,
       "bbox": [
         5,
-        12,
+        27,
         187,
-        196
+        180
       ],
-      "alpha_pixels": 18228
+      "bbox_width": 182,
+      "bbox_height": 153,
+      "alpha_pixels": 15388,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 1,
       "bbox": [
         5,
-        26,
+        38,
         187,
-        181
+        169
       ],
-      "alpha_pixels": 15705
+      "bbox_width": 182,
+      "bbox_height": 131,
+      "alpha_pixels": 15457,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 2,
       "bbox": [
         5,
-        40,
+        42,
         187,
-        168
+        166
       ],
-      "alpha_pixels": 12354
+      "bbox_width": 182,
+      "bbox_height": 124,
+      "alpha_pixels": 11063,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 3,
       "bbox": [
         5,
-        30,
+        33,
         187,
-        177
+        175
       ],
-      "alpha_pixels": 15150
+      "bbox_width": 182,
+      "bbox_height": 142,
+      "alpha_pixels": 16245,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 4,
       "bbox": [
+        6,
         5,
-        38,
-        187,
-        170
+        186,
+        203
       ],
-      "alpha_pixels": 12717
+      "bbox_width": 180,
+      "bbox_height": 198,
+      "alpha_pixels": 13507,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 5,
+      "bbox": [
+        5,
+        35,
+        187,
+        173
+      ],
+      "bbox_width": 182,
+      "bbox_height": 138,
+      "alpha_pixels": 13323,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
+    },
+    {
+      "index": 6,
+      "bbox": [
+        5,
+        27,
+        187,
+        181
+      ],
+      "bbox_width": 182,
+      "bbox_height": 154,
+      "alpha_pixels": 15565,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
+    },
+    {
+      "index": 7,
+      "bbox": [
+        13,
+        5,
+        178,
+        203
+      ],
+      "bbox_width": 165,
+      "bbox_height": 198,
+      "alpha_pixels": 16703,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
+    },
+    {
+      "index": 8,
+      "bbox": [
+        6,
+        9,
+        185,
+        199
+      ],
+      "bbox_width": 179,
+      "bbox_height": 190,
+      "alpha_pixels": 18247,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
+    },
+    {
+      "index": 9,
       "bbox": [
         5,
         43,
         187,
         164
       ],
-      "alpha_pixels": 12200
-    },
-    {
-      "index": 6,
-      "bbox": [
-        5,
-        5,
-        186,
-        203
-      ],
-      "alpha_pixels": 18583
-    },
-    {
-      "index": 7,
-      "bbox": [
-        25,
-        5,
-        167,
-        203
-      ],
-      "alpha_pixels": 15297
-    },
-    {
-      "index": 8,
-      "bbox": [
-        22,
-        5,
-        170,
-        203
-      ],
-      "alpha_pixels": 15192
-    },
-    {
-      "index": 9,
-      "bbox": [
-        5,
-        16,
-        187,
-        191
-      ],
-      "alpha_pixels": 19885
+      "bbox_width": 182,
+      "bbox_height": 121,
+      "alpha_pixels": 11064,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 10,
       "bbox": [
         5,
-        32,
+        42,
         187,
-        176
+        165
       ],
-      "alpha_pixels": 15545
+      "bbox_width": 182,
+      "bbox_height": 123,
+      "alpha_pixels": 13538,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 11,
       "bbox": [
         5,
-        37,
+        41,
         187,
-        171
+        167
       ],
-      "alpha_pixels": 14922
+      "bbox_width": 182,
+      "bbox_height": 126,
+      "alpha_pixels": 14469,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 12,
       "bbox": [
         5,
-        8,
+        42,
         187,
-        199
+        166
       ],
-      "alpha_pixels": 19108
+      "bbox_width": 182,
+      "bbox_height": 124,
+      "alpha_pixels": 13066,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 13,
       "bbox": [
         5,
-        15,
+        47,
         187,
-        192
+        161
       ],
-      "alpha_pixels": 17643
+      "bbox_width": 182,
+      "bbox_height": 114,
+      "alpha_pixels": 13001,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 14,
       "bbox": [
         5,
-        7,
+        16,
         187,
-        200
+        192
       ],
-      "alpha_pixels": 18868
+      "bbox_width": 182,
+      "bbox_height": 176,
+      "alpha_pixels": 16408,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     },
     {
       "index": 15,
       "bbox": [
         5,
-        11,
+        24,
         187,
-        197
+        183
       ],
-      "alpha_pixels": 18431
+      "bbox_width": 182,
+      "bbox_height": 159,
+      "alpha_pixels": 15667,
+      "edge_alpha": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      }
     }
   ]
 }

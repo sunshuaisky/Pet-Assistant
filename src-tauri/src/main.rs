@@ -5,7 +5,7 @@ use std::{
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
+    sync::{LazyLock, Mutex},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -140,6 +140,10 @@ struct AppState {
 }
 
 const BRIDGE_ACTIVE_SESSION_TTL_MS: u128 = 12 * 60 * 60 * 1000;
+const SESSION_WATCH_INTERVAL_MS: u64 = 1_500;
+const PROCESS_CWD_CACHE_TTL_MS: u128 = 30_000;
+static PROCESS_CWD_CACHE: LazyLock<Mutex<HashMap<String, (String, u128)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[tauri::command]
 fn list_sessions(state: State<AppState>) -> Result<Vec<IslandSession>, String> {
@@ -863,14 +867,14 @@ fn compact_history_message(value: &str) -> String {
 
 fn detect_sessions() -> Vec<IslandSession> {
     let mut sessions = detect_bridge_sessions();
-    let codex_cli_process_count = running_process_count("codex-cli");
-    append_codex_cli_process_sessions(&mut sessions, codex_cli_process_count);
+    let codex_cli_processes = running_processes("codex-cli", true);
+    let codex_cli_process_count = codex_cli_processes.len();
+    append_codex_cli_process_sessions(&mut sessions, codex_cli_processes);
     limit_codex_cli_island_sessions(&mut sessions, codex_cli_process_count);
     sessions
 }
 
-fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, codex_cli_process_count: usize) {
-    let processes = running_processes("codex-cli");
+fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, processes: Vec<RunningProcess>) {
     let context = latest_codex_cli_context(sessions);
     let active_codex_cli_sessions = sessions
         .iter()
@@ -881,7 +885,7 @@ fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, codex_cl
         })
         .count();
 
-    let missing_process_sessions = codex_cli_process_count.saturating_sub(active_codex_cli_sessions);
+    let missing_process_sessions = processes.len().saturating_sub(active_codex_cli_sessions);
     if missing_process_sessions == 0 {
         return;
     }
@@ -1747,10 +1751,10 @@ fn detect_integrations() -> Vec<IntegrationStatus> {
 }
 
 fn running_process_count(integration_id: &str) -> usize {
-    running_processes(integration_id).len()
+    running_processes(integration_id, false).len()
 }
 
-fn running_processes(integration_id: &str) -> Vec<RunningProcess> {
+fn running_processes(integration_id: &str, include_cwd: bool) -> Vec<RunningProcess> {
     let process_list = process_list();
     let Some(definition) = integration_definitions()
         .into_iter()
@@ -1764,7 +1768,9 @@ fn running_processes(integration_id: &str) -> Vec<RunningProcess> {
         .filter(|line| process_line_matches_definition(line, &definition))
         .filter_map(parse_running_process)
         .map(|mut process| {
-            process.cwd = process_cwd(&process.pid);
+            if include_cwd {
+                process.cwd = process_cwd_cached(&process.pid);
+            }
             process
         })
         .collect()
@@ -1794,6 +1800,24 @@ fn parse_running_process(line: &str) -> Option<RunningProcess> {
         args: args.trim().into(),
         cwd: None,
     })
+}
+
+fn process_cwd_cached(pid: &str) -> Option<String> {
+    let now = current_time_millis();
+    if let Ok(cache) = PROCESS_CWD_CACHE.lock() {
+        if let Some((cwd, cached_at)) = cache.get(pid) {
+            if now.saturating_sub(*cached_at) <= PROCESS_CWD_CACHE_TTL_MS {
+                return Some(cwd.clone());
+            }
+        }
+    }
+
+    let cwd = process_cwd(pid)?;
+    if let Ok(mut cache) = PROCESS_CWD_CACHE.lock() {
+        cache.insert(pid.to_string(), (cwd.clone(), now));
+        cache.retain(|_pid, (_cwd, cached_at)| now.saturating_sub(*cached_at) <= PROCESS_CWD_CACHE_TTL_MS);
+    }
+    Some(cwd)
 }
 
 fn process_cwd(pid: &str) -> Option<String> {
@@ -2024,7 +2048,7 @@ fn start_session_watcher(app: tauri::AppHandle) {
                 previous = serialized;
             }
 
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_millis(SESSION_WATCH_INTERVAL_MS));
         }
     });
 }

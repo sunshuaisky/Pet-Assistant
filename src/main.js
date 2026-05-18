@@ -56,9 +56,9 @@ const PET_HEIGHT = 139;
 const PET_MARGIN = 56;
 const PET_DRAG_HOLD_MS = 180;
 const PET_DRAG_DISTANCE = 7;
-const PASS_THROUGH_POLL_MS = 90;
-const SESSION_POLL_MS = 1000;
-const SESSION_HISTORY_POLL_MS = 2500;
+const PASS_THROUGH_POLL_MS = 180;
+const SESSION_POLL_MS = 5000;
+const SESSION_HISTORY_POLL_MS = 3500;
 const PET_POSITION_STORAGE_KEY = "phoenix-pet-position";
 const SETTINGS_STORAGE_KEY = "phoenix-pet-settings";
 const EMPTY_HISTORY = [];
@@ -447,15 +447,29 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function approvalSession(sessions = state.sessions) {
+  return sessions.find((session) => session.needsApproval || session.phase === "approval");
+}
+
 function setSessions(sessions, useFallback = false) {
   const nextSessions = asArray(sessions);
   const previousSessions = state.sessions;
   const previousSelectedId = state.selectedId;
+  const previousRoute = state.route;
+  const previousOpen = state.open;
+  const previousActionMenuOpen = state.actionMenuOpen;
   state.sessions = nextSessions.length || !useFallback ? nextSessions : fallbackSessions;
   if (!state.sessions.some((session) => session.id === state.selectedId)) {
     state.selectedId = activeSession().id;
   }
-  return !sameData(previousSessions, state.sessions) || previousSelectedId !== state.selectedId;
+  syncApprovalPopup();
+  return (
+    !sameData(previousSessions, state.sessions) ||
+    previousSelectedId !== state.selectedId ||
+    previousRoute !== state.route ||
+    previousOpen !== state.open ||
+    previousActionMenuOpen !== state.actionMenuOpen
+  );
 }
 
 function setIntegrations(integrations, useFallback = false) {
@@ -468,6 +482,23 @@ function setIntegrations(integrations, useFallback = false) {
 let sessionsRefreshing = false;
 let integrationsRefreshing = false;
 let sessionsRefreshQueued = false;
+let lastAutoOpenedApprovalId = "";
+
+function syncApprovalPopup() {
+  const approval = approvalSession();
+  if (!approval) {
+    lastAutoOpenedApprovalId = "";
+    return;
+  }
+
+  if (approval.id === lastAutoOpenedApprovalId) return;
+
+  lastAutoOpenedApprovalId = approval.id;
+  state.selectedId = approval.id;
+  state.route = "sessions";
+  state.open = true;
+  state.actionMenuOpen = false;
+}
 
 async function refreshSessions() {
   if (sessionsRefreshing) {
@@ -1295,7 +1326,9 @@ function interactiveRects() {
 
 async function updateCursorPassThrough() {
   if (!appWindow || !tauriWindowApi?.cursorPosition) return;
+  if (cursorPassThroughUpdating) return;
 
+  cursorPassThroughUpdating = true;
   try {
     const [cursor, origin, scaleFactor] = await Promise.all([
       tauriWindowApi.cursorPosition(),
@@ -1310,8 +1343,12 @@ async function updateCursorPassThrough() {
     await appWindow.setIgnoreCursorEvents(!overInteractive && !petDrag);
   } catch {
     // In browser preview, Tauri window APIs are not available.
+  } finally {
+    cursorPassThroughUpdating = false;
   }
 }
+
+let cursorPassThroughUpdating = false;
 
 async function configureOverlayWindow() {
   if (!appWindow) return;
