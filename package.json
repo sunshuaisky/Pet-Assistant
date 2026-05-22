@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:approval": "node tests/approval-hook-flow.test.mjs",
+    "test:ui": "node tests/ui-state.test.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
