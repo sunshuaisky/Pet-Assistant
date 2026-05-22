@@ -28,6 +28,18 @@ export function normalizeGlassStrength(value) {
   return value === "low" || value === "high" || value === "medium" ? value : "medium";
 }
 
+const stableTimestamp = new Date(0).toISOString();
+
+function stableIdPart(value) {
+  const text = String(value || "").trim().replace(/\s+/g, " ");
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+  }
+  const slug = text.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12);
+  return `${slug || "text"}-${hash.toString(36)}`;
+}
+
 export function normalizePet(pet) {
   if (!pet?.id) return null;
   const kind = pet.kind === "atlas" ? "atlas" : "image";
@@ -50,18 +62,19 @@ export function normalizePet(pet) {
 }
 
 export function normalizeUserSettings(settings = {}) {
+  const input = settings && typeof settings === "object" ? settings : {};
   return {
     ...defaultUserSettings,
-    ...settings,
-    currentPetId: settings.currentPetId || "tuxie",
-    importedPets: Array.isArray(settings.importedPets)
-      ? settings.importedPets.map(normalizePet).filter(Boolean)
+    ...input,
+    currentPetId: input.currentPetId || "tuxie",
+    importedPets: Array.isArray(input.importedPets)
+      ? input.importedPets.map(normalizePet).filter(Boolean)
       : [],
-    renamedPets: settings.renamedPets && typeof settings.renamedPets === "object" ? settings.renamedPets : {},
-    appearanceMode: normalizeAppearanceMode(settings.appearanceMode),
-    reduceTransparency: Boolean(settings.reduceTransparency),
-    increaseContrast: Boolean(settings.increaseContrast),
-    glassStrength: normalizeGlassStrength(settings.glassStrength),
+    renamedPets: input.renamedPets && typeof input.renamedPets === "object" ? input.renamedPets : {},
+    appearanceMode: normalizeAppearanceMode(input.appearanceMode),
+    reduceTransparency: Boolean(input.reduceTransparency),
+    increaseContrast: Boolean(input.increaseContrast),
+    glassStrength: normalizeGlassStrength(input.glassStrength),
   };
 }
 
@@ -87,37 +100,41 @@ export function createConversation(title = "新对话", timestamp = new Date().t
   };
 }
 
-export function normalizeMessage(message = {}) {
-  const text = String(message.text || message.message || "").trim().slice(0, 1200);
+export function normalizeMessage(message = {}, index = 0) {
+  const input = message && typeof message === "object" ? message : {};
+  const text = String(input.text || input.message || "").trim().slice(0, 1200);
   if (!text) return null;
+  const role = input.role === "user" ? "user" : "assistant";
   return {
-    id: String(message.id || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`),
-    role: message.role === "user" ? "user" : "assistant",
+    id: String(input.id || `chat-${index}-${role}-${stableIdPart(text)}`),
+    role,
     text,
-    timestamp: message.timestamp || new Date().toISOString(),
+    timestamp: input.timestamp || stableTimestamp,
   };
 }
 
-export function normalizeConversation(conversation = {}) {
-  const messages = Array.isArray(conversation.messages)
-    ? conversation.messages.map(normalizeMessage).filter(Boolean).slice(-120)
+export function normalizeConversation(conversation = {}, index = 0) {
+  const input = conversation && typeof conversation === "object" ? conversation : {};
+  const messages = Array.isArray(input.messages)
+    ? input.messages.map(normalizeMessage).filter(Boolean).slice(-120)
     : [];
   const firstUserMessage = messages.find((message) => message.role === "user");
-  const timestamp = conversation.createdAt || messages[0]?.timestamp || new Date().toISOString();
-  const id = String(conversation.id || `conversation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const title = conversationTitleFromText(input.title || firstUserMessage?.text || "新对话");
+  const timestamp = input.createdAt || messages[0]?.timestamp || stableTimestamp;
+  const id = String(input.id || `conversation-${index}-${stableIdPart(title || messages[0]?.text)}`);
   return {
     id,
-    title: conversationTitleFromText(conversation.title || firstUserMessage?.text || "新对话"),
+    title,
     messages,
     createdAt: timestamp,
-    updatedAt: conversation.updatedAt || messages[messages.length - 1]?.timestamp || timestamp,
+    updatedAt: input.updatedAt || messages[messages.length - 1]?.timestamp || timestamp,
   };
 }
 
 export function normalizeChatState(value) {
   if (Array.isArray(value)) {
     const messages = value.map(normalizeMessage).filter(Boolean).slice(-120);
-    const timestamp = messages[0]?.timestamp || new Date().toISOString();
+    const timestamp = messages[0]?.timestamp || stableTimestamp;
     const conversation = normalizeConversation({
       title: messages.find((message) => message.role === "user")?.text || "新对话",
       messages,
@@ -157,7 +174,12 @@ export function selectedConversation(chatState) {
 
 export function appendChatMessageToState(chatState, role, text, timestamp = new Date().toISOString()) {
   const state = normalizeChatState(chatState);
-  const message = normalizeMessage({ role, text, timestamp });
+  const message = normalizeMessage({
+    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    role,
+    text,
+    timestamp,
+  });
   if (!message) return state;
   const current = selectedConversation(state);
   const nextConversation = {

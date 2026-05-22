@@ -23,6 +23,7 @@ assert.equal(normalizedSettings.increaseContrast, false);
 assert.equal(normalizedSettings.glassStrength, "medium");
 assert.equal(normalizedSettings.importedPets.length, 1);
 assert.equal(normalizedSettings.renamedPets.tuxie, "Tux");
+assert.equal(normalizeUserSettings(null).appearanceMode, "system");
 
 assert.equal(normalizeRoute("sessions"), "monitor");
 assert.equal(normalizeRoute("monitor"), "monitor");
@@ -43,6 +44,12 @@ assert.equal(migratedChat.conversations.length, 1);
 assert.equal(migratedChat.conversations[0].title, "现在状态如何？");
 assert.equal(migratedChat.conversations[0].messages.length, 2);
 assert.equal(migratedChat.selectedConversationId, migratedChat.conversations[0].id);
+
+const stableChatA = normalizeChatState([{ role: "user", text: "稳定吗？" }]);
+const stableChatB = normalizeChatState([{ role: "user", text: "稳定吗？" }]);
+assert.equal(stableChatA.selectedConversationId, stableChatB.selectedConversationId);
+assert.equal(stableChatA.conversations[0].id, stableChatB.conversations[0].id);
+assert.equal(stableChatA.conversations[0].messages[0].id, stableChatB.conversations[0].messages[0].id);
 
 const emptyChat = normalizeChatState(null);
 assert.equal(emptyChat.conversations.length, 1);
