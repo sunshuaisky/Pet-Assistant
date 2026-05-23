@@ -754,7 +754,7 @@ function appendChatMessage(role, text) {
 function createNewChatConversation() {
   const conversation = createConversation("新对话");
   state.chatState = {
-    conversations: [conversation, ...state.chatState.conversations].slice(0, 50),
+    conversations: [conversation, ...state.chatState.conversations],
     selectedConversationId: conversation.id,
   };
   state.chatDraft = "";
@@ -764,7 +764,6 @@ function createNewChatConversation() {
 function selectChatConversation(id) {
   if (!state.chatState.conversations.some((conversation) => conversation.id === id)) return;
   state.chatState.selectedConversationId = id;
-  state.chatDraft = "";
   saveChatState();
 }
 

@@ -148,7 +148,7 @@ export function normalizeChatState(value) {
   }
 
   const conversations = Array.isArray(value?.conversations)
-    ? value.conversations.map(normalizeConversation).filter(Boolean).slice(-50)
+    ? value.conversations.map(normalizeConversation).filter(Boolean)
     : [];
   if (!conversations.length) {
     const conversation = createConversation("新对话");

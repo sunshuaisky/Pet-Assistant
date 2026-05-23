@@ -98,7 +98,22 @@ assert.equal(cappedSelected.messages[cappedSelected.messages.length - 1].text, "
 assert.equal(cappedSelected.messages[cappedSelected.messages.length - 1].timestamp, fixedTimestamp);
 assert.notDeepEqual(cappedAppended, cappedChat);
 
+const manyConversations = Array.from({ length: 51 }, (_, index) => ({
+  id: `conversation-${index}`,
+  title: `对话 ${index}`,
+  messages: [],
+  createdAt: `2026-05-23T01:${String(index).padStart(2, "0")}:00.000Z`,
+  updatedAt: `2026-05-23T01:${String(index).padStart(2, "0")}:00.000Z`,
+}));
+const normalizedManyConversations = normalizeChatState({
+  conversations: manyConversations,
+  selectedConversationId: "conversation-0",
+});
+assert.equal(normalizedManyConversations.conversations.length, 51);
+assert.equal(normalizedManyConversations.selectedConversationId, "conversation-0");
+
 const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 assert.match(mainSource, /from "\.\/ui-state\.js";/);
 assert.match(mainSource, /route:\s*normalizeRoute\("monitor"\)/);
 assert.match(mainSource, /selectedSetting:\s*"appearance"/);
@@ -114,6 +129,10 @@ assert.match(mainSource, /data-chat-select="\$\{item\.id\}"/);
 assert.match(mainSource, /class="assistant-pill">上下文独立<\/span>/);
 assert.match(mainSource, /if \(target\.dataset\.chatNew !== undefined\)/);
 assert.match(mainSource, /if \(target\.dataset\.chatSelect\)/);
+const selectChatConversationSource = mainSource.match(/function selectChatConversation\(id\) \{[\s\S]*?\n\}/)?.[0] || "";
+assert.ok(selectChatConversationSource);
+assert.doesNotMatch(selectChatConversationSource, /state\.chatDraft\s*=/);
+assert.match(stylesSource, /\.chat-bubble p\s*{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*}/);
 assert.doesNotMatch(mainSource, /messages\.length === previousMessageCount/);
 assert.doesNotMatch(mainSource, /chatMessages:\s*loadChatMessages\(\)/);
 assert.doesNotMatch(mainSource, /function normalizeChatMessages\(/);
