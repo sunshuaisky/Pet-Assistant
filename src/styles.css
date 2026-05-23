@@ -1510,6 +1510,85 @@ svg {
   accent-color: var(--accent);
 }
 
+.segmented-setting {
+  align-items: flex-start;
+}
+
+.segmented-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--surface-sunken);
+}
+
+.segmented-control button {
+  min-width: 48px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: calc(var(--control-radius) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 750;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.segmented-control button:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.segmented-control button.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+.segmented-control button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.theme-preview-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.theme-preview-strip span {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.theme-preview-strip span:nth-child(2) {
+  background: color-mix(in oklch, var(--surface-sunken), var(--text-strong) 12%);
+}
+
+.theme-preview-strip b,
+.theme-preview-strip small {
+  display: block;
+}
+
+.theme-preview-strip b {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.theme-preview-strip small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .settings-actions {
   display: flex;
   flex-wrap: wrap;

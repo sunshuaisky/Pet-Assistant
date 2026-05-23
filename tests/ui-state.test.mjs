@@ -114,6 +114,7 @@ assert.equal(normalizedManyConversations.selectedConversationId, "conversation-0
 
 const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const stylesSource = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
+const petActionMenuSource = mainSource.match(/function renderPetActionMenu\(\) \{[\s\S]*?\n\}/)?.[0] || "";
 assert.match(mainSource, /from "\.\/ui-state\.js";/);
 assert.match(mainSource, /route:\s*normalizeRoute\("monitor"\)/);
 assert.match(mainSource, /selectedSetting:\s*"appearance"/);
@@ -132,6 +133,16 @@ assert.match(mainSource, /if \(target\.dataset\.chatSelect\)/);
 const selectChatConversationSource = mainSource.match(/function selectChatConversation\(id\) \{[\s\S]*?\n\}/)?.[0] || "";
 assert.ok(selectChatConversationSource);
 assert.doesNotMatch(selectChatConversationSource, /state\.chatDraft\s*=/);
+assert.match(petActionMenuSource, /data-panel-route="chat"/);
+assert.match(petActionMenuSource, />\s*聊天\s*</);
+assert.match(mainSource, /function togglePetPanelFromTrigger\(\)/);
+assert.match(mainSource, /handlePetPointerUp[\s\S]*togglePetPanelFromTrigger\(\)/);
+assert.match(mainSource, /keydown[\s\S]*togglePetPanelFromTrigger\(\)/);
+assert.doesNotMatch(mainSource, /回到“会话”页/);
+assert.match(mainSource, /回到“监控”页/);
+assert.match(stylesSource, /\.segmented-control\s*{/);
+assert.match(stylesSource, /\.segmented-control button\.selected\s*{/);
+assert.match(stylesSource, /\.theme-preview-strip\s*{/);
 assert.match(stylesSource, /\.chat-bubble p\s*{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*}/);
 assert.doesNotMatch(mainSource, /messages\.length === previousMessageCount/);
 assert.doesNotMatch(mainSource, /chatMessages:\s*loadChatMessages\(\)/);

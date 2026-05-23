@@ -666,6 +666,15 @@ function renderPetActionMenu() {
       </button>
       <span class="menu-separator" aria-hidden="true"></span>
       <button
+        class="menu-command ${state.route === "chat" && state.open ? "active" : ""}"
+        type="button"
+        role="menuitem"
+        data-panel-route="chat"
+      >
+        聊天
+      </button>
+      <span class="menu-separator" aria-hidden="true"></span>
+      <button
         class="menu-command ${state.route === "settings" && state.open ? "active" : ""}"
         type="button"
         role="menuitem"
@@ -772,7 +781,7 @@ function petChatReply(text) {
   const lower = text.toLowerCase();
   if (/审批|批准|拒绝|approval/.test(lower)) {
     return session.needsApproval || session.phase === "approval"
-      ? `我看到 ${providerName(session.provider)} 正在等审批。你可以回到“会话”页查看详情，再选择批准、允许本次会话或拒绝。`
+      ? `我看到 ${providerName(session.provider)} 正在等审批。你可以回到“监控”页查看详情，再选择批准、允许本次会话或拒绝。`
       : "当前没有待审批事项。你可以继续工作，我会在有审批或输入请求时提醒你。";
   }
   if (/状态|运行|会话|进度/.test(lower)) {
@@ -1691,6 +1700,12 @@ function applyPetPosition(position) {
   hub.style.setProperty("--pet-y", `${state.petPosition.y}px`);
 }
 
+function togglePetPanelFromTrigger() {
+  if (!state.open) state.route = approvalSession() ? "monitor" : normalizeRoute(state.route);
+  state.open = !state.open;
+  state.actionMenuOpen = false;
+}
+
 function handlePetPointerDown(event) {
   const trigger = event.target.closest?.(".pet-trigger");
   if (!trigger || event.button !== 0) return;
@@ -1780,9 +1795,7 @@ function handlePetPointerUp(event) {
     return;
   }
   if (!wasMoved) {
-    if (!state.open) state.route = approvalSession() ? "monitor" : normalizeRoute(state.route);
-    state.open = !state.open;
-    state.actionMenuOpen = false;
+    togglePetPanelFromTrigger();
     render();
   }
 }
@@ -2013,8 +2026,7 @@ document.addEventListener("keydown", (event) => {
   }
   if ((event.key === "Enter" || event.key === " ") && event.target.closest?.(".pet-trigger")) {
     event.preventDefault();
-    state.open = !state.open;
-    state.actionMenuOpen = false;
+    togglePetPanelFromTrigger();
     render();
   }
 });
