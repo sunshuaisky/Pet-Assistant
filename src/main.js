@@ -748,8 +748,24 @@ function appendChatMessage(role, text) {
   state.chatState = appendChatMessageToState(state.chatState, role, text);
   if (sameData(previous, state.chatState)) return null;
   saveChatState();
-  const currentConversation = selectedConversation(state.chatState);
-  return currentConversation?.messages[currentConversation.messages.length - 1] || null;
+  return selectedConversation(state.chatState).messages.at(-1);
+}
+
+function createNewChatConversation() {
+  const conversation = createConversation("新对话");
+  state.chatState = {
+    conversations: [conversation, ...state.chatState.conversations].slice(0, 50),
+    selectedConversationId: conversation.id,
+  };
+  state.chatDraft = "";
+  saveChatState();
+}
+
+function selectChatConversation(id) {
+  if (!state.chatState.conversations.some((conversation) => conversation.id === id)) return;
+  state.chatState.selectedConversationId = id;
+  state.chatDraft = "";
+  saveChatState();
 }
 
 function petChatReply(text) {
@@ -787,38 +803,67 @@ function submitChatMessage() {
 function renderChat() {
   const pet = currentPet();
   const conversation = selectedConversation(state.chatState);
-  const messages = conversation?.messages.length
+  const messages = conversation.messages.length
     ? conversation.messages
-    : [
-        {
-          id: "chat-empty",
-          role: "assistant",
-          text: `我是 ${pet.name}，可以帮你快速查看会话、审批、集成和宠物设置。`,
-          timestamp: new Date().toISOString(),
-        },
-      ];
+    : [{
+        id: "chat-empty",
+        role: "assistant",
+        text: `我是 ${pet.name}。你可以像 ChatGPT 一样和我连续对话，也可以问我当前工具状态。`,
+        timestamp: new Date().toISOString(),
+      }];
+  const attentionCount = state.sessions.filter(
+    (item) => item.needsApproval || item.needsInput || item.phase === "approval" || item.phase === "input",
+  ).length;
+  const activeCount = state.sessions.filter((item) => item.phase === "processing").length;
 
   return `
     <section class="chat-layout" aria-label="${escapeHtml(pet.name)} 聊天">
-      <div class="chat-head">
-        ${renderPetPreview(pet)}
-        <div>
-          <h2>和 ${escapeHtml(pet.name)} 聊天</h2>
-          <p>轻量助手，先处理状态问答；后续可以接入真实模型。</p>
+      <aside class="chat-sidebar">
+        <div class="chat-sidebar-head">
+          <h2>对话</h2>
+          <button type="button" data-chat-new>新对话</button>
         </div>
+        <input class="chat-search" type="search" placeholder="搜索对话" aria-label="搜索对话" />
+        <div class="chat-conversation-list">
+          ${state.chatState.conversations.map((item) => `
+            <button
+              class="${item.id === conversation.id ? "selected" : ""}"
+              type="button"
+              data-chat-select="${item.id}"
+            >
+              <b>${escapeHtml(item.title)}</b>
+              <small>${item.messages.at(-1)?.text ? escapeHtml(item.messages.at(-1).text) : "还没有消息"}</small>
+            </button>
+          `).join("")}
+        </div>
+        <div class="chat-monitor-strip">
+          <span class="${attentionCount ? "attention" : ""}">${attentionCount} 待处理</span>
+          <span>${activeCount} 运行中</span>
+        </div>
+      </aside>
+      <div class="chat-stage">
+        <header class="chat-stage-head">
+          <div>
+            <h2>Tuxie Chat</h2>
+            <p>${escapeHtml(conversation.title)}</p>
+          </div>
+          <span class="assistant-pill">本地助手</span>
+          <span class="assistant-pill">上下文独立</span>
+        </header>
+        <div class="chat-thread" aria-live="polite">
+          ${messages.map(renderChatMessage).join("")}
+        </div>
+        <form class="chat-composer" data-chat-form>
+          <textarea
+            data-chat-input
+            rows="2"
+            maxlength="1200"
+            placeholder="给 Tuxie 发消息..."
+          >${escapeHtml(state.chatDraft)}</textarea>
+          <button class="primary" type="submit" aria-label="发送">发送</button>
+          <small>Enter 换行 · ⌘ Enter 发送</small>
+        </form>
       </div>
-      <div class="chat-thread" aria-live="polite">
-        ${messages.map(renderChatMessage).join("")}
-      </div>
-      <form class="chat-composer" data-chat-form>
-        <textarea
-          data-chat-input
-          rows="2"
-          maxlength="1200"
-          placeholder="问问当前状态、审批、集成或宠物设置..."
-        >${escapeHtml(state.chatDraft)}</textarea>
-        <button class="primary" type="submit">发送</button>
-      </form>
     </section>
   `;
 }
@@ -1763,6 +1808,16 @@ document.addEventListener("click", async (event) => {
     if (target.dataset.settingTarget) state.selectedSetting = target.dataset.settingTarget;
     state.open = true;
     state.actionMenuOpen = false;
+    render();
+    return;
+  }
+  if (target.dataset.chatNew !== undefined) {
+    createNewChatConversation();
+    render();
+    return;
+  }
+  if (target.dataset.chatSelect) {
+    selectChatConversation(target.dataset.chatSelect);
     render();
     return;
   }
