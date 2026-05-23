@@ -4,6 +4,16 @@ import tuxiePlayBall16 from "./assets/pets/tuxie/play-ball-16.webp";
 import tuxiePlayWand16 from "./assets/pets/tuxie/play-wand-16.webp";
 import tuxieSleeping16 from "./assets/pets/tuxie/sleeping-16.webp";
 import tuxieSpritesheet from "./assets/pets/tuxie/spritesheet.webp";
+import {
+  appendChatMessageToState,
+  computeTheme,
+  createConversation,
+  defaultUserSettings,
+  normalizeChatState,
+  normalizeRoute,
+  normalizeUserSettings,
+  selectedConversation,
+} from "./ui-state.js";
 
 const invoke = window.__TAURI__?.core?.invoke;
 const convertFileSrc = window.__TAURI__?.core?.convertFileSrc;
@@ -78,22 +88,15 @@ const builtInPets = [
   },
 ];
 
-const defaultUserSettings = {
-  showBadge: true,
-  showStatus: true,
-  currentPetId: "tuxie",
-  importedPets: [],
-  renamedPets: {},
-};
-
 const settingSections = [
+  { id: "appearance", title: "外观", subtitle: "主题与毛玻璃" },
   { id: "display", title: "显示", subtitle: "宠物标记与位置" },
   { id: "pet", title: "宠物", subtitle: "导入与切换" },
   { id: "integrations", title: "集成", subtitle: "工具检测与跳转" },
 ];
 
 const routeItems = [
-  { id: "sessions", title: "会话" },
+  { id: "monitor", title: "监控" },
   { id: "chat", title: "聊天" },
   { id: "settings", title: "设置" },
 ];
@@ -215,57 +218,22 @@ function saveUserSettings() {
   writeJsonStorage(SETTINGS_STORAGE_KEY, state.userSettings);
 }
 
-function normalizeChatMessages(messages) {
-  if (!Array.isArray(messages)) return [];
-  return messages
-    .map((message) => ({
-      id: String(message?.id || `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`),
-      role: message?.role === "user" ? "user" : "assistant",
-      text: String(message?.text || "").trim().slice(0, 1200),
-      timestamp: message?.timestamp || new Date().toISOString(),
-    }))
-    .filter((message) => message.text)
-    .slice(-80);
-}
-
-function loadChatMessages() {
-  return normalizeChatMessages(readJsonStorage(CHAT_STORAGE_KEY, []));
-}
-
-function saveChatMessages() {
-  writeJsonStorage(CHAT_STORAGE_KEY, state.chatMessages);
-}
-
-function normalizeUserSettings(settings) {
+function loadChatState() {
+  const chatState = normalizeChatState(readJsonStorage(CHAT_STORAGE_KEY, null));
+  if (chatState.conversations.length) return chatState;
+  const conversation = createConversation("新对话");
   return {
-    ...settings,
-    currentPetId: settings.currentPetId || "tuxie",
-    importedPets: Array.isArray(settings.importedPets)
-      ? settings.importedPets.map(normalizePet).filter(Boolean)
-      : [],
-    renamedPets: settings.renamedPets && typeof settings.renamedPets === "object" ? settings.renamedPets : {},
+    conversations: [conversation],
+    selectedConversationId: conversation.id,
   };
 }
 
-function normalizePet(pet) {
-  if (!pet?.id) return null;
-  const kind = pet.kind === "atlas" ? "atlas" : "image";
-  const src = pet.src || "";
-  const assetPath = pet.assetPath || "";
-  if (!src && !assetPath) return null;
+function saveChatState() {
+  writeJsonStorage(CHAT_STORAGE_KEY, state.chatState);
+}
 
-  return {
-    id: pet.id,
-    name: pet.name || "Imported Pet",
-    kind,
-    source: pet.source || "imported",
-    src,
-    assetPath,
-    columns: Number(pet.columns) || SPRITE_COLUMNS,
-    rows: Number(pet.rows) || SPRITE_ROWS,
-    width: Number(pet.width) || PET_WIDTH,
-    height: Number(pet.height) || PET_HEIGHT,
-  };
+function normalizeImportedPet(pet) {
+  return normalizeUserSettings({ importedPets: [pet] }).importedPets[0] || null;
 }
 
 function petLibrary() {
@@ -389,22 +357,37 @@ function escapeHtml(value) {
 
 const state = {
   open: false,
-  route: "sessions",
+  route: normalizeRoute("monitor"),
   selectedId: "codex-local",
-  selectedSetting: "display",
+  selectedSetting: "appearance",
   sessions: fallbackSessions,
   integrations: fallbackIntegrations,
   historyBySessionId: {},
   historyLoadingId: "",
   petPosition: loadPetPosition(),
   userSettings: loadUserSettings(),
-  chatMessages: loadChatMessages(),
+  chatState: loadChatState(),
   chatDraft: "",
   petAction: "sleeping",
   dragAction: null,
   actionMenuOpen: false,
   renamingPetId: "",
 };
+
+const systemThemeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function effectiveTheme() {
+  return computeTheme(state.userSettings.appearanceMode, Boolean(systemThemeQuery?.matches));
+}
+
+function syncThemeAttributes() {
+  const root = document.documentElement;
+  root.dataset.theme = effectiveTheme();
+  root.dataset.appearanceMode = state.userSettings.appearanceMode;
+  root.dataset.glassStrength = state.userSettings.glassStrength;
+  root.dataset.reduceTransparency = String(state.userSettings.reduceTransparency);
+  root.dataset.increaseContrast = String(state.userSettings.increaseContrast);
+}
 
 function phaseLabel(phase) {
   return {
@@ -537,7 +520,7 @@ function syncApprovalPopup() {
 
   lastAutoOpenedApprovalId = approval.id;
   state.selectedId = approval.id;
-  state.route = "sessions";
+  state.route = "monitor";
   state.open = true;
   state.actionMenuOpen = false;
 }
@@ -750,7 +733,7 @@ function renderPetHub(session) {
             </svg>
           </button>
         </header>
-        ${state.route === "sessions" ? renderSessions() : state.route === "chat" ? renderChat() : renderSettings()}
+        ${state.route === "monitor" ? renderMonitor() : state.route === "chat" ? renderChat() : renderSettings()}
       </div>
     </section>
   `;
@@ -761,15 +744,13 @@ function chatInput() {
 }
 
 function appendChatMessage(role, text) {
-  const message = {
-    id: `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    role,
-    text: String(text || "").trim().slice(0, 1200),
-    timestamp: new Date().toISOString(),
-  };
-  if (!message.text) return null;
-  state.chatMessages = normalizeChatMessages([...state.chatMessages, message]);
-  saveChatMessages();
+  const previousConversation = selectedConversation(state.chatState);
+  const previousMessageCount = previousConversation?.messages.length || 0;
+  state.chatState = appendChatMessageToState(state.chatState, role, text);
+  const currentConversation = selectedConversation(state.chatState);
+  const message = currentConversation?.messages[currentConversation.messages.length - 1] || null;
+  if (!message || currentConversation.messages.length === previousMessageCount) return null;
+  saveChatState();
   return message;
 }
 
@@ -807,8 +788,9 @@ function submitChatMessage() {
 
 function renderChat() {
   const pet = currentPet();
-  const messages = state.chatMessages.length
-    ? state.chatMessages
+  const conversation = selectedConversation(state.chatState);
+  const messages = conversation?.messages.length
+    ? conversation.messages
     : [
         {
           id: "chat-empty",
@@ -854,7 +836,7 @@ function renderChatMessage(message) {
   `;
 }
 
-function renderSessions() {
+function renderMonitor() {
   const selected = selectedSession();
   const integration = effectiveIntegrationForSession(selected);
   const canFocus = integration?.focusable && (integration.running || integration.installed);
@@ -1324,11 +1306,12 @@ let lastHistoryScrollSignature = "";
 let lastChatScrollSignature = "";
 
 function render() {
+  syncThemeAttributes();
   if (!appRoot) return;
 
   const session = activeSession();
   panelOpening = state.open && !lastRenderedOpenState;
-  const shouldCheckHistoryScroll = panelOpening || state.route === "sessions";
+  const shouldCheckHistoryScroll = panelOpening || state.route === "monitor";
   appRoot.innerHTML = `
     <main class="app">
       ${renderPetHub(session)}
@@ -1344,7 +1327,7 @@ function render() {
 }
 
 function syncHistoryScroll(force = false) {
-  if (!state.open || state.route !== "sessions") return;
+  if (!state.open || state.route !== "monitor") return;
 
   const session = selectedSession();
   const history = state.historyBySessionId[session.id] || [];
@@ -1363,8 +1346,9 @@ function syncHistoryScroll(force = false) {
 function syncChatScroll(force = false) {
   if (!state.open || state.route !== "chat") return;
 
-  const latest = state.chatMessages[state.chatMessages.length - 1];
-  const signature = `${state.chatMessages.length}:${latest?.id || ""}`;
+  const messages = selectedConversation(state.chatState)?.messages || [];
+  const latest = messages[messages.length - 1];
+  const signature = `${messages.length}:${latest?.id || ""}`;
   if (!force && signature === lastChatScrollSignature) return;
   lastChatScrollSignature = signature;
 
@@ -1703,7 +1687,7 @@ function handlePetPointerUp(event) {
     return;
   }
   if (!wasMoved) {
-    if (!state.open) state.route = "sessions";
+    if (!state.open) state.route = approvalSession() ? "monitor" : normalizeRoute(state.route);
     state.open = !state.open;
     state.actionMenuOpen = false;
     render();
@@ -1726,7 +1710,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
   if (target.dataset.panelRoute) {
-    state.route = target.dataset.panelRoute;
+    state.route = normalizeRoute(target.dataset.panelRoute);
     if (target.dataset.settingTarget) state.selectedSetting = target.dataset.settingTarget;
     state.open = true;
     state.actionMenuOpen = false;
@@ -1792,7 +1776,7 @@ document.addEventListener("click", async (event) => {
     }
 
     try {
-      const imported = normalizePet({ ...(await invoke("import_pet_asset")), source: "imported" });
+      const imported = normalizeImportedPet({ ...(await invoke("import_pet_asset")), source: "imported" });
       if (!imported) throw new Error("导入结果无效");
 
       state.userSettings.importedPets = [
@@ -1854,7 +1838,7 @@ document.addEventListener("click", async (event) => {
   }
   if (target.dataset.select) {
     state.selectedId = target.dataset.select;
-    state.route = "sessions";
+    state.route = "monitor";
     render();
     refreshSessionHistory(true);
     return;
@@ -1936,6 +1920,10 @@ if (listen) {
     refreshSessionHistory();
   });
 }
+
+systemThemeQuery?.addEventListener?.("change", () => {
+  if (state.userSettings.appearanceMode === "system") render();
+});
 
 render();
 configureOverlayWindow();

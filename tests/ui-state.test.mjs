@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   appendChatMessageToState,
   computeTheme,
   createConversation,
+  defaultUserSettings,
   normalizeChatState,
   normalizeRoute,
   normalizeUserSettings,
+  selectedConversation,
 } from "../src/ui-state.js";
 
 const normalizedSettings = normalizeUserSettings({
@@ -24,6 +27,7 @@ assert.equal(normalizedSettings.glassStrength, "medium");
 assert.equal(normalizedSettings.importedPets.length, 1);
 assert.equal(normalizedSettings.renamedPets.tuxie, "Tux");
 assert.equal(normalizeUserSettings(null).appearanceMode, "system");
+assert.equal(defaultUserSettings.currentPetId, "tuxie");
 
 assert.equal(normalizeRoute("sessions"), "monitor");
 assert.equal(normalizeRoute("monitor"), "monitor");
@@ -66,5 +70,16 @@ assert.equal(selected.messages.length, 1);
 assert.equal(selected.messages[0].role, "user");
 assert.equal(selected.messages[0].text, "审批是什么？");
 assert.equal(selected.title, "审批是什么？");
+assert.equal(selectedConversation(withMessage).id, selected.id);
+
+const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+assert.match(mainSource, /from "\.\/ui-state\.js";/);
+assert.match(mainSource, /route:\s*normalizeRoute\("monitor"\)/);
+assert.match(mainSource, /selectedSetting:\s*"appearance"/);
+assert.match(mainSource, /chatState:\s*loadChatState\(\)/);
+assert.doesNotMatch(mainSource, /chatMessages:\s*loadChatMessages\(\)/);
+assert.doesNotMatch(mainSource, /function normalizeChatMessages\(/);
+assert.doesNotMatch(mainSource, /function normalizeUserSettings\(/);
+assert.doesNotMatch(mainSource, /function normalizePet\(/);
 
 console.log("ui-state: ok");
