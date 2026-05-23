@@ -744,14 +744,12 @@ function chatInput() {
 }
 
 function appendChatMessage(role, text) {
-  const previousConversation = selectedConversation(state.chatState);
-  const previousMessageCount = previousConversation?.messages.length || 0;
+  const previous = state.chatState;
   state.chatState = appendChatMessageToState(state.chatState, role, text);
-  const currentConversation = selectedConversation(state.chatState);
-  const message = currentConversation?.messages[currentConversation.messages.length - 1] || null;
-  if (!message || currentConversation.messages.length === previousMessageCount) return null;
+  if (sameData(previous, state.chatState)) return null;
   saveChatState();
-  return message;
+  const currentConversation = selectedConversation(state.chatState);
+  return currentConversation?.messages[currentConversation.messages.length - 1] || null;
 }
 
 function petChatReply(text) {

@@ -72,6 +72,32 @@ assert.equal(selected.messages[0].text, "审批是什么？");
 assert.equal(selected.title, "审批是什么？");
 assert.equal(selectedConversation(withMessage).id, selected.id);
 
+const fixedTimestamp = "2026-05-23T00:03:00.000Z";
+const cappedMessages = Array.from({ length: 120 }, (_, index) => ({
+  id: `cap-${index}`,
+  role: index % 2 ? "assistant" : "user",
+  text: `第 ${index + 1} 条`,
+  timestamp: `2026-05-23T00:${String(index).padStart(2, "0")}:00.000Z`,
+}));
+const cappedChat = normalizeChatState({
+  conversations: [
+    {
+      id: "conversation-cap",
+      title: "上限测试",
+      messages: cappedMessages,
+      createdAt: "2026-05-23T00:00:00.000Z",
+      updatedAt: "2026-05-23T00:02:00.000Z",
+    },
+  ],
+  selectedConversationId: "conversation-cap",
+});
+const cappedAppended = appendChatMessageToState(cappedChat, "user", "第 121 条", fixedTimestamp);
+const cappedSelected = selectedConversation(cappedAppended);
+assert.equal(cappedSelected.messages.length, 120);
+assert.equal(cappedSelected.messages[cappedSelected.messages.length - 1].text, "第 121 条");
+assert.equal(cappedSelected.messages[cappedSelected.messages.length - 1].timestamp, fixedTimestamp);
+assert.notDeepEqual(cappedAppended, cappedChat);
+
 const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 assert.match(mainSource, /from "\.\/ui-state\.js";/);
 assert.match(mainSource, /route:\s*normalizeRoute\("monitor"\)/);
@@ -79,6 +105,8 @@ assert.match(mainSource, /selectedSetting:\s*"appearance"/);
 assert.match(mainSource, /chatState:\s*loadChatState\(\)/);
 assert.match(mainSource, /if \(id === "appearance"\)/);
 assert.match(mainSource, /<h2>外观<\/h2>/);
+assert.match(mainSource, /sameData\(previous,\s*state\.chatState\)/);
+assert.doesNotMatch(mainSource, /messages\.length === previousMessageCount/);
 assert.doesNotMatch(mainSource, /chatMessages:\s*loadChatMessages\(\)/);
 assert.doesNotMatch(mainSource, /function normalizeChatMessages\(/);
 assert.doesNotMatch(mainSource, /function normalizeUserSettings\(/);
