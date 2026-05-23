@@ -751,7 +751,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--surface-sunken);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 720;
   text-overflow: ellipsis;
