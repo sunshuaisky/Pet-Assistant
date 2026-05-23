@@ -368,6 +368,7 @@ const state = {
   userSettings: loadUserSettings(),
   chatState: loadChatState(),
   chatDraft: "",
+  chatSearch: "",
   petAction: "sleeping",
   dragAction: null,
   actionMenuOpen: false,
@@ -702,6 +703,38 @@ function renderPetActionMenu() {
   `;
 }
 
+function renderPanelPetAvatar(pet) {
+  const source = escapeHtml(petAssetSource(pet));
+  const atlasStyle = pet.kind === "atlas"
+    ? `background-image: url('${source}'); background-size: ${46 * pet.columns}px ${50 * pet.rows}px;`
+    : `background-image: url('${source}');`;
+  return `<span class="panel-pet-avatar ${pet.kind === "atlas" ? "atlas" : "image"}" style="${atlasStyle}" aria-hidden="true"></span>`;
+}
+
+function renderQuickAppearanceControls() {
+  if (state.route !== "chat") return "";
+  const options = [
+    ["dark", "深色"],
+    ["light", "浅色"],
+    ["system", "跟随系统"],
+  ];
+  return `
+    <div class="panel-appearance" aria-label="快速切换外观">
+      <span>外观:</span>
+      ${options.map(([value, label]) => `
+        <button
+          type="button"
+          class="${state.userSettings.appearanceMode === value ? "selected" : ""}"
+          data-setting-value="appearanceMode"
+          data-setting-next="${value}"
+        >
+          ${label}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderPetHub(session) {
   const pet = currentPet();
   const attentionCount = state.sessions.filter(
@@ -727,9 +760,12 @@ function renderPetHub(session) {
       ${state.actionMenuOpen ? renderPetActionMenu() : ""}
       <div class="pet-panel" role="dialog" aria-label="${escapeHtml(pet.name)} 功能面板">
         <header class="panel-header">
-          <div class="panel-title">
-            <strong>${escapeHtml(pet.name)}</strong>
-            <span>${escapeHtml(phaseLabel(session.phase))} · ${escapeHtml(sessionDisplayTitle(session))}</span>
+          <div class="panel-identity">
+            ${renderPanelPetAvatar(pet)}
+            <div class="panel-title">
+              <strong>${escapeHtml(pet.name)}</strong>
+              <span>在线 · 心情 🙂 · 能量 87%</span>
+            </div>
           </div>
           <nav aria-label="面板视图">
             ${routeItems.map((item) => `
@@ -742,12 +778,15 @@ function renderPetHub(session) {
               </button>
             `).join("")}
           </nav>
-          <button class="panel-close" type="button" data-panel-close aria-label="关闭功能面板">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 6 6 18"></path>
-              <path d="m6 6 12 12"></path>
-            </svg>
-          </button>
+          <div class="panel-tools">
+            ${renderQuickAppearanceControls()}
+            <button class="panel-close" type="button" data-panel-close aria-label="关闭功能面板">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18"></path>
+                <path d="m6 6 12 12"></path>
+              </svg>
+            </button>
+          </div>
         </header>
         ${state.route === "monitor" ? renderMonitor() : state.route === "chat" ? renderChat() : renderSettings()}
       </div>
@@ -774,6 +813,7 @@ function createNewChatConversation() {
     selectedConversationId: conversation.id,
   };
   state.chatDraft = "";
+  state.chatSearch = "";
   saveChatState();
 }
 
@@ -818,6 +858,13 @@ function submitChatMessage() {
 function renderChat() {
   const pet = currentPet();
   const conversation = selectedConversation(state.chatState);
+  const searchQuery = state.chatSearch.trim().toLowerCase();
+  const conversations = searchQuery
+    ? state.chatState.conversations.filter((item) => {
+        const latest = item.messages.at(-1)?.text || "";
+        return `${item.title} ${latest}`.toLowerCase().includes(searchQuery);
+      })
+    : state.chatState.conversations;
   const messages = conversation.messages.length
     ? conversation.messages
     : [{
@@ -838,18 +885,25 @@ function renderChat() {
           <h2>对话</h2>
           <button type="button" data-chat-new>新对话</button>
         </div>
-        <input class="chat-search" type="search" placeholder="搜索对话" aria-label="搜索对话" />
+        <input
+          class="chat-search"
+          type="search"
+          placeholder="搜索对话"
+          aria-label="搜索对话"
+          data-chat-search
+          value="${escapeHtml(state.chatSearch)}"
+        />
         <div class="chat-conversation-list">
-          ${state.chatState.conversations.map((item) => `
+          ${conversations.length ? conversations.map((item) => `
             <button
               class="${item.id === conversation.id ? "selected" : ""}"
               type="button"
-              data-chat-select="${item.id}"
+              data-chat-select="${escapeHtml(item.id)}"
             >
               <b>${escapeHtml(item.title)}</b>
               <small>${item.messages.at(-1)?.text ? escapeHtml(item.messages.at(-1).text) : "还没有消息"}</small>
             </button>
-          `).join("")}
+          `).join("") : `<div class="chat-search-empty">没有匹配的对话</div>`}
         </div>
         <div class="chat-monitor-strip">
           <span class="${attentionCount ? "attention" : ""}">${attentionCount} 待处理</span>
@@ -1994,6 +2048,11 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.dataset?.chatSearch !== undefined) {
+    state.chatSearch = event.target.value;
+    render();
+    return;
+  }
   if (event.target.dataset?.chatInput === undefined) return;
   state.chatDraft = event.target.value;
 });
