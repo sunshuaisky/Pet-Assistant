@@ -476,6 +476,13 @@ function approvalSession(sessions = state.sessions) {
   return sessions.find((session) => session.needsApproval || session.phase === "approval");
 }
 
+function pendingUserActionSession(sessions = state.sessions) {
+  return (
+    sessions.find((session) => session.needsApproval || session.phase === "approval") ||
+    sessions.find((session) => session.needsInput || session.phase === "input")
+  );
+}
+
 function setSessions(sessions, useFallback = false) {
   const nextSessions = asArray(sessions);
   const previousSessions = state.sessions;
@@ -1701,7 +1708,15 @@ function applyPetPosition(position) {
 }
 
 function togglePetPanelFromTrigger() {
-  if (!state.open) state.route = approvalSession() ? "monitor" : normalizeRoute(state.route);
+  if (!state.open) {
+    const pending = pendingUserActionSession();
+    if (pending) {
+      state.selectedId = pending.id;
+      state.route = "monitor";
+    } else {
+      state.route = normalizeRoute(state.route);
+    }
+  }
   state.open = !state.open;
   state.actionMenuOpen = false;
 }

@@ -464,8 +464,8 @@ svg {
 }
 
 .panel-header nav button.active {
-  background: var(--text-strong);
-  color: var(--surface-sunken);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .panel-header nav button:hover:not(.active) {
