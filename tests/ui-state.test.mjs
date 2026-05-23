@@ -77,6 +77,8 @@ assert.match(mainSource, /from "\.\/ui-state\.js";/);
 assert.match(mainSource, /route:\s*normalizeRoute\("monitor"\)/);
 assert.match(mainSource, /selectedSetting:\s*"appearance"/);
 assert.match(mainSource, /chatState:\s*loadChatState\(\)/);
+assert.match(mainSource, /if \(id === "appearance"\)/);
+assert.match(mainSource, /<h2>外观<\/h2>/);
 assert.doesNotMatch(mainSource, /chatMessages:\s*loadChatMessages\(\)/);
 assert.doesNotMatch(mainSource, /function normalizeChatMessages\(/);
 assert.doesNotMatch(mainSource, /function normalizeUserSettings\(/);

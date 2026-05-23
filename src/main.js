@@ -1156,6 +1156,17 @@ function renderSettings() {
 }
 
 function renderSettingsPanel(id) {
+  if (id === "appearance") {
+    return `
+      <div class="settings-panel-head">
+        <h2>外观</h2>
+        <p>主题与毛玻璃控制会在下一步开放。</p>
+      </div>
+      <p class="setting-caption">
+        当前主题模式：${escapeHtml(state.userSettings.appearanceMode)} · 毛玻璃强度：${escapeHtml(state.userSettings.glassStrength)}
+      </p>
+    `;
+  }
   if (id === "pet") {
     return `
       <div class="settings-panel-head">
