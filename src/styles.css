@@ -361,7 +361,7 @@ svg {
 }
 
 .pet-action-menu button.danger {
-  color: oklch(0.82 0.12 25);
+  color: var(--danger);
 }
 
 .pet-action-menu button:hover,
@@ -1174,8 +1174,8 @@ svg {
 }
 
 .session-detail footer button.danger {
-  background: oklch(0.72 0.17 25 / 0.16);
-  color: oklch(0.84 0.1 25);
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .session-detail footer button:hover,
@@ -1556,7 +1556,7 @@ svg {
 }
 
 .pet-row .pet-remove {
-  color: oklch(0.84 0.1 25);
+  color: var(--danger);
 }
 
 .integration-row {
