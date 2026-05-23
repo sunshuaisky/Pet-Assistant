@@ -1745,6 +1745,10 @@ svg {
     padding-right: 2px;
   }
 
+  .chat-sidebar {
+    max-height: 190px;
+  }
+
   .session-detail {
     min-height: 260px;
   }
