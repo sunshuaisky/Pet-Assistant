@@ -1,27 +1,89 @@
 :root {
-  color-scheme: dark;
-  --ink: oklch(0.96 0.008 82);
-  --ink-strong: oklch(0.995 0.006 82);
-  --ink-soft: oklch(0.73 0.012 82);
-  --ink-muted: oklch(0.58 0.012 82);
-  --surface: oklch(0.17 0.014 250);
-  --surface-raised: oklch(0.22 0.016 250);
-  --surface-hover: oklch(0.29 0.018 250);
-  --line: oklch(0.98 0.006 82 / 0.13);
-  --line-strong: oklch(0.98 0.006 82 / 0.22);
-  --accent: oklch(0.76 0.115 185);
-  --accent-ink: oklch(0.14 0.028 205);
-  --attention: oklch(0.74 0.125 72);
-  --attention-ink: oklch(0.18 0.024 70);
-  --blue: oklch(0.74 0.13 235);
-  --green: oklch(0.78 0.13 160);
-  --violet: oklch(0.76 0.13 305);
-  --red: oklch(0.72 0.17 25);
-  --radius: 8px;
-  --shadow-panel: 0 28px 72px oklch(0.03 0.018 250 / 0.72), 0 0 0 1px oklch(0.98 0.006 82 / 0.05);
+  color-scheme: light;
+  --text-primary: oklch(0.22 0.018 235);
+  --text-strong: oklch(0.15 0.02 235);
+  --text-secondary: oklch(0.46 0.018 235);
+  --text-muted: oklch(0.62 0.014 235);
+  --surface-panel: oklch(0.98 0.012 230 / 0.68);
+  --surface-raised: oklch(0.995 0.008 230 / 0.58);
+  --surface-hover: oklch(0.93 0.018 230 / 0.7);
+  --surface-sunken: oklch(0.9 0.018 230 / 0.52);
+  --line: oklch(0.42 0.02 235 / 0.14);
+  --line-strong: oklch(0.42 0.02 235 / 0.24);
+  --accent: oklch(0.58 0.12 215);
+  --accent-soft: oklch(0.75 0.095 215 / 0.2);
+  --accent-ink: oklch(0.98 0.01 230);
+  --attention: oklch(0.7 0.12 78);
+  --attention-soft: oklch(0.82 0.09 78 / 0.22);
+  --success: oklch(0.62 0.12 155);
+  --info: oklch(0.62 0.12 235);
+  --violet: oklch(0.62 0.11 300);
+  --danger: oklch(0.6 0.16 28);
+  --danger-soft: oklch(0.74 0.12 28 / 0.18);
+  --radius: 12px;
+  --control-radius: 8px;
+  --glass-blur: 22px;
+  --glass-saturate: 1.35;
+  --shadow-panel: 0 28px 80px oklch(0.32 0.04 235 / 0.22), 0 1px 0 oklch(1 0 0 / 0.35) inset;
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   background: transparent;
-  color: var(--ink);
+  color: var(--text-primary);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --text-primary: oklch(0.91 0.012 235);
+  --text-strong: oklch(0.98 0.008 235);
+  --text-secondary: oklch(0.74 0.014 235);
+  --text-muted: oklch(0.58 0.014 235);
+  --surface-panel: oklch(0.19 0.018 235 / 0.66);
+  --surface-raised: oklch(0.25 0.02 235 / 0.58);
+  --surface-hover: oklch(0.31 0.024 235 / 0.66);
+  --surface-sunken: oklch(0.12 0.016 235 / 0.5);
+  --line: oklch(0.94 0.01 235 / 0.14);
+  --line-strong: oklch(0.94 0.01 235 / 0.24);
+  --accent: oklch(0.72 0.12 215);
+  --accent-soft: oklch(0.72 0.12 215 / 0.18);
+  --accent-ink: oklch(0.13 0.02 235);
+  --attention: oklch(0.78 0.12 78);
+  --attention-soft: oklch(0.78 0.12 78 / 0.18);
+  --success: oklch(0.74 0.12 155);
+  --info: oklch(0.74 0.12 235);
+  --violet: oklch(0.76 0.11 300);
+  --danger: oklch(0.72 0.16 28);
+  --danger-soft: oklch(0.72 0.16 28 / 0.16);
+  --shadow-panel: 0 30px 84px oklch(0.05 0.02 235 / 0.58), 0 1px 0 oklch(1 0 0 / 0.08) inset;
+}
+
+:root[data-glass-strength="low"] {
+  --glass-blur: 14px;
+  --glass-saturate: 1.15;
+}
+
+:root[data-glass-strength="high"] {
+  --glass-blur: 34px;
+  --glass-saturate: 1.55;
+}
+
+:root[data-reduce-transparency="true"] {
+  --surface-panel: oklch(0.98 0.012 230);
+  --surface-raised: oklch(0.995 0.008 230);
+  --surface-hover: oklch(0.93 0.018 230);
+  --surface-sunken: oklch(0.9 0.018 230);
+  --glass-blur: 0px;
+  --glass-saturate: 1;
+}
+
+:root[data-theme="dark"][data-reduce-transparency="true"] {
+  --surface-panel: oklch(0.19 0.018 235);
+  --surface-raised: oklch(0.25 0.02 235);
+  --surface-hover: oklch(0.31 0.024 235);
+  --surface-sunken: oklch(0.12 0.016 235);
+}
+
+:root[data-increase-contrast="true"] {
+  --line: var(--line-strong);
+  --text-muted: var(--text-secondary);
 }
 
 * {
@@ -167,8 +229,8 @@ svg {
   padding: 0 6px;
   border-radius: 999px;
   border: 1px solid oklch(0.18 0.014 250 / 0.18);
-  background: var(--ink-strong);
-  color: var(--surface);
+  background: var(--text-strong);
+  color: var(--surface-sunken);
   font-size: 11px;
   font-weight: 850;
   pointer-events: none;
@@ -176,7 +238,7 @@ svg {
 
 .pet-badge.attention {
   background: var(--attention);
-  color: var(--attention-ink);
+  color: oklch(0.18 0.024 70);
 }
 
 .pet-status {
@@ -189,7 +251,7 @@ svg {
   border-radius: 999px;
   border: 1px solid oklch(0.98 0.006 82 / 0.14);
   background: oklch(0.13 0.014 250 / 0.82);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
@@ -201,18 +263,18 @@ svg {
 .pet-panel {
   position: absolute;
   display: none;
-  width: min(720px, calc(100vw - 32px));
-  max-height: min(620px, calc(100vh - 112px));
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 112px));
   padding: 10px;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background:
-    radial-gradient(circle at 14% 0%, oklch(0.38 0.055 185 / 0.24), transparent 30%),
-    linear-gradient(180deg, oklch(0.19 0.016 250 / 0.98), oklch(0.135 0.014 250 / 0.985));
+  background: var(--surface-panel);
   box-shadow: var(--shadow-panel);
   pointer-events: auto;
   transform-origin: bottom right;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .pet-hub.is-open .pet-panel {
@@ -253,9 +315,11 @@ svg {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: oklch(0.16 0.014 250 / 0.98);
-  box-shadow: 0 18px 44px oklch(0.03 0.018 250 / 0.58);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
   pointer-events: auto;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .pet-hub.above .pet-action-menu {
@@ -279,7 +343,7 @@ svg {
   padding: 0 10px;
   border-radius: 7px;
   background: transparent;
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 750;
@@ -293,7 +357,7 @@ svg {
 }
 
 .pet-action-menu button.menu-command {
-  color: var(--ink);
+  color: var(--text-primary);
 }
 
 .pet-action-menu button.danger {
@@ -303,7 +367,7 @@ svg {
 .pet-action-menu button:hover,
 .pet-action-menu button.active {
   background: var(--surface-hover);
-  color: var(--ink-strong);
+  color: var(--text-strong);
 }
 
 @keyframes pet-panel-in {
@@ -329,7 +393,7 @@ svg {
 .panel-header strong {
   display: block;
   overflow: hidden;
-  color: var(--ink-strong);
+  color: var(--text-strong);
   font-size: 13px;
   font-weight: 820;
   text-overflow: ellipsis;
@@ -339,7 +403,7 @@ svg {
 .panel-header span {
   display: block;
   overflow: hidden;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 11px;
   margin-top: 2px;
   text-overflow: ellipsis;
@@ -356,7 +420,7 @@ svg {
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: oklch(0.98 0.006 82 / 0.08);
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   transition: background 160ms ease, color 160ms ease;
 }
 
@@ -364,7 +428,7 @@ svg {
 .panel-close:focus-visible {
   border-color: var(--line);
   background: var(--surface-hover);
-  color: var(--ink-strong);
+  color: var(--text-strong);
 }
 
 .panel-close:focus-visible {
@@ -393,20 +457,20 @@ svg {
   padding: 0 11px;
   border-radius: 6px;
   background: transparent;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
   transition: background 160ms ease, color 160ms ease;
 }
 
 .panel-header nav button.active {
-  background: var(--ink-strong);
-  color: var(--surface);
+  background: var(--text-strong);
+  color: var(--surface-sunken);
 }
 
 .panel-header nav button:hover:not(.active) {
   background: var(--surface-hover);
-  color: var(--ink);
+  color: var(--text-primary);
 }
 
 .sessions-layout {
@@ -433,7 +497,7 @@ svg {
   gap: 8px;
   min-height: 28px;
   padding: 0 6px 2px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 760;
 }
@@ -456,13 +520,13 @@ svg {
   border: 1px dashed var(--line-strong);
   border-radius: var(--radius);
   background: oklch(0.98 0.006 82 / 0.045);
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   text-align: center;
 }
 
 .empty-state strong {
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 13px;
 }
 
@@ -506,7 +570,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: linear-gradient(135deg, oklch(0.98 0.006 82 / 0.16), oklch(0.98 0.006 82 / 0.055));
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 10px;
   font-weight: 850;
   letter-spacing: 0;
@@ -526,13 +590,13 @@ svg {
 }
 
 .row-body strong {
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
 .row-body small {
   margin-top: 3px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -546,7 +610,7 @@ svg {
   border-radius: 999px;
   border: 1px solid oklch(0.98 0.006 82 / 0.08);
   background: oklch(0.98 0.006 82 / 0.105);
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
@@ -556,7 +620,7 @@ svg {
 
 .phase.processing {
   background: oklch(0.74 0.13 235 / 0.18);
-  color: var(--blue);
+  color: var(--info);
 }
 
 .phase.approval {
@@ -571,17 +635,17 @@ svg {
 
 .phase.waiting {
   background: oklch(0.78 0.13 160 / 0.15);
-  color: var(--green);
+  color: var(--success);
 }
 
 .phase.completed {
   background: oklch(0.78 0.13 160 / 0.15);
-  color: var(--green);
+  color: var(--success);
 }
 
 .phase.failed {
   background: oklch(0.72 0.17 25 / 0.16);
-  color: var(--red);
+  color: var(--danger);
 }
 
 .session-detail {
@@ -593,7 +657,10 @@ svg {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: oklch(0.98 0.006 82 / 0.06);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .session-detail-scroll {
@@ -614,12 +681,15 @@ svg {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, oklch(0.98 0.006 82 / 0.075), oklch(0.98 0.006 82 / 0.045));
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .session-summary.attention {
   border-color: oklch(0.74 0.125 72 / 0.32);
-  background: linear-gradient(180deg, oklch(0.74 0.125 72 / 0.12), oklch(0.98 0.006 82 / 0.045));
+  background: var(--surface-panel);
 }
 
 .session-summary.processing {
@@ -648,7 +718,7 @@ svg {
 }
 
 .detail-topline span {
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -656,14 +726,14 @@ svg {
 .detail-topline h2 {
   margin: 2px 0 0;
   overflow-wrap: anywhere;
-  color: var(--ink-strong);
+  color: var(--text-strong);
   font-size: 15px;
   line-height: 1.25;
 }
 
 .session-current-message {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -681,7 +751,7 @@ svg {
   border: 1px solid oklch(0.98 0.006 82 / 0.08);
   border-radius: 7px;
   background: oklch(0.07 0.014 250 / 0.28);
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 720;
   text-overflow: ellipsis;
@@ -692,7 +762,7 @@ svg {
   display: block;
   overflow: hidden;
   margin-bottom: 3px;
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -724,7 +794,7 @@ svg {
   margin: 2px 0 0;
   max-height: 96px;
   overflow: auto;
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -740,7 +810,10 @@ svg {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: oklch(0.08 0.014 250 / 0.26);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .history-header {
@@ -751,13 +824,13 @@ svg {
   min-height: 34px;
   padding: 0 10px;
   border-bottom: 1px solid var(--line);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 820;
 }
 
 .history-header small {
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 720;
 }
@@ -777,7 +850,7 @@ svg {
   flex: 1 1 auto;
   place-items: center;
   min-height: 90px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   text-align: center;
 }
@@ -818,7 +891,7 @@ svg {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--blue);
+  background: var(--info);
 }
 
 .history-item.tool.failed {
@@ -827,7 +900,7 @@ svg {
 }
 
 .history-item.tool.failed::before {
-  background: var(--red);
+  background: var(--danger);
 }
 
 .history-item.tool.patch {
@@ -835,7 +908,7 @@ svg {
 }
 
 .history-item.tool.patch::before {
-  background: var(--blue);
+  background: var(--info);
 }
 
 .history-item.tool.command::before {
@@ -855,7 +928,7 @@ svg {
 }
 
 .history-meta strong {
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 11px;
 }
 
@@ -864,7 +937,7 @@ svg {
 .tool-status {
   min-width: 0;
   overflow: hidden;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -875,7 +948,7 @@ svg {
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -921,7 +994,7 @@ svg {
   padding: 3px 6px;
   border-radius: 5px;
   background: oklch(0.74 0.13 235 / 0.14);
-  color: var(--blue);
+  color: var(--info);
   font-size: 10px;
   font-weight: 850;
   line-height: 1;
@@ -930,7 +1003,7 @@ svg {
 
 .history-item.patch .tool-kind {
   background: oklch(0.74 0.13 235 / 0.14);
-  color: var(--blue);
+  color: var(--info);
 }
 
 .history-item.command .tool-kind {
@@ -940,7 +1013,7 @@ svg {
 
 .history-item.failed .tool-kind {
   background: oklch(0.72 0.17 25 / 0.14);
-  color: var(--red);
+  color: var(--danger);
 }
 
 .tool-summary {
@@ -975,7 +1048,7 @@ svg {
 .history-item.failed .tool-status,
 .history-item.error .tool-status {
   background: oklch(0.72 0.17 25 / 0.14);
-  color: var(--red);
+  color: var(--danger);
 }
 
 .history-item pre {
@@ -1047,7 +1120,7 @@ svg {
 }
 
 .session-facts dt {
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-weight: 750;
   white-space: nowrap;
 }
@@ -1056,7 +1129,7 @@ svg {
   min-width: 0;
   margin: 0;
   overflow-wrap: anywhere;
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   line-height: 1.35;
 }
 
@@ -1088,7 +1161,7 @@ svg {
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: oklch(0.98 0.006 82 / 0.12);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 750;
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
@@ -1132,19 +1205,22 @@ svg {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, oklch(0.76 0.115 185 / 0.12), oklch(0.98 0.006 82 / 0.045));
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .chat-head h2 {
   margin: 0;
-  color: var(--ink-strong);
+  color: var(--text-strong);
   font-size: 16px;
   line-height: 1.2;
 }
 
 .chat-head p {
   margin: 5px 0 0;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1158,7 +1234,10 @@ svg {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: oklch(0.08 0.014 250 / 0.24);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .chat-message {
@@ -1190,14 +1269,14 @@ svg {
 }
 
 .chat-bubble span {
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   font-weight: 820;
 }
 
 .chat-bubble p {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -1205,7 +1284,7 @@ svg {
 }
 
 .chat-message.user .chat-bubble p {
-  color: var(--ink);
+  color: var(--text-primary);
 }
 
 .chat-composer {
@@ -1224,10 +1303,13 @@ svg {
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   outline: none;
-  background: oklch(0.08 0.014 250 / 0.42);
-  color: var(--ink);
+  background: var(--surface-panel);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.45;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .chat-composer textarea:focus {
@@ -1235,7 +1317,7 @@ svg {
 }
 
 .chat-composer textarea::placeholder {
-  color: var(--ink-muted);
+  color: var(--text-muted);
 }
 
 .chat-composer button {
@@ -1293,7 +1375,7 @@ svg {
 
 .settings-layout aside small {
   overflow: hidden;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1306,7 +1388,10 @@ svg {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: oklch(0.98 0.006 82 / 0.06);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 
 .settings-panel-head {
@@ -1315,14 +1400,14 @@ svg {
 
 .settings-panel-head h2 {
   margin: 0;
-  color: var(--ink-strong);
+  color: var(--text-strong);
   font-size: 17px;
   line-height: 1.2;
 }
 
 .settings-panel-head p {
   margin: 5px 0 0;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1339,7 +1424,7 @@ svg {
   min-height: 58px;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 13px;
 }
 
@@ -1350,7 +1435,7 @@ svg {
 
 .setting-line small {
   margin-top: 4px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -1420,14 +1505,14 @@ svg {
 }
 
 .pet-row strong {
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
 .pet-row small,
 .pet-name-editor small {
   margin-top: 3px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -1440,7 +1525,7 @@ svg {
   border-radius: 7px;
   outline: none;
   background: oklch(0.08 0.014 250 / 0.32);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
@@ -1460,7 +1545,7 @@ svg {
   border: 1px solid transparent;
   border-radius: 7px;
   background: oklch(0.98 0.006 82 / 0.12);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 750;
 }
@@ -1500,13 +1585,13 @@ svg {
 }
 
 .integration-row strong {
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 12px;
 }
 
 .integration-row small {
   margin-top: 3px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -1514,7 +1599,7 @@ svg {
   padding: 4px 7px;
   border-radius: 999px;
   background: oklch(0.98 0.006 82 / 0.1);
-  color: var(--ink-soft);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
@@ -1522,18 +1607,18 @@ svg {
 
 .integration-status.running {
   background: oklch(0.78 0.13 160 / 0.18);
-  color: var(--green);
+  color: var(--success);
 }
 
 .integration-status.installed {
   background: oklch(0.74 0.13 235 / 0.18);
-  color: var(--blue);
+  color: var(--info);
 }
 
 .integration-status.missing,
 .integration-status.preview {
   background: oklch(0.98 0.006 82 / 0.085);
-  color: var(--ink-muted);
+  color: var(--text-muted);
 }
 
 .integration-row button {
@@ -1542,7 +1627,7 @@ svg {
   border: 1px solid transparent;
   border-radius: 7px;
   background: oklch(0.98 0.006 82 / 0.12);
-  color: var(--ink);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 750;
 }
@@ -1554,7 +1639,7 @@ svg {
 
 .setting-caption {
   margin: 16px 0 0;
-  color: var(--ink-muted);
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
 }
