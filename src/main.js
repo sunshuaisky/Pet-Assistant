@@ -1154,17 +1154,7 @@ function renderSettings() {
 }
 
 function renderSettingsPanel(id) {
-  if (id === "appearance") {
-    return `
-      <div class="settings-panel-head">
-        <h2>外观</h2>
-        <p>主题与毛玻璃控制会在下一步开放。</p>
-      </div>
-      <p class="setting-caption">
-        当前主题模式：${escapeHtml(state.userSettings.appearanceMode)} · 毛玻璃强度：${escapeHtml(state.userSettings.glassStrength)}
-      </p>
-    `;
-  }
+  if (id === "appearance") return renderAppearancePanel();
   if (id === "pet") {
     return `
       <div class="settings-panel-head">
@@ -1305,6 +1295,56 @@ function renderSettingToggle(label, key, description = "") {
       </span>
       <input type="checkbox" data-setting-toggle="${key}" ${state.userSettings[key] ? "checked" : ""} />
     </label>
+  `;
+}
+
+function renderSegmentedSetting(label, description, key, options) {
+  return `
+    <div class="setting-line segmented-setting">
+      <span>
+        <b>${label}</b>
+        <small>${description}</small>
+      </span>
+      <span class="segmented-control" role="group" aria-label="${escapeHtml(label)}">
+        ${options.map((option) => `
+          <button
+            type="button"
+            class="${state.userSettings[key] === option.value ? "selected" : ""}"
+            data-setting-value="${key}"
+            data-setting-next="${option.value}"
+          >
+            ${option.label}
+          </button>
+        `).join("")}
+      </span>
+    </div>
+  `;
+}
+
+function renderAppearancePanel() {
+  return `
+    <div class="settings-panel-head">
+      <h2>外观</h2>
+      <p>选择面板主题，也可以跟随系统自动切换。</p>
+    </div>
+    <div class="setting-group">
+      ${renderSegmentedSetting("主题", "控制浅色、深色或跟随系统。", "appearanceMode", [
+        { value: "light", label: "浅色" },
+        { value: "dark", label: "深色" },
+        { value: "system", label: "跟随系统" },
+      ])}
+      ${renderSegmentedSetting("毛玻璃强度", "调节面板背景的模糊与饱和度。", "glassStrength", [
+        { value: "low", label: "低" },
+        { value: "medium", label: "中" },
+        { value: "high", label: "高" },
+      ])}
+      ${renderSettingToggle("降低透明度", "reduceTransparency", "关闭大面积毛玻璃，提升可读性和性能。")}
+      ${renderSettingToggle("增强对比度", "increaseContrast", "提高文字、边框和状态标签对比度。")}
+    </div>
+    <div class="theme-preview-strip" aria-hidden="true">
+      <span><b>浅色预览</b><small>瓷白毛玻璃</small></span>
+      <span><b>深色预览</b><small>烟黑毛玻璃</small></span>
+    </div>
   `;
 }
 
@@ -1775,6 +1815,12 @@ document.addEventListener("click", async (event) => {
     state.route = "settings";
     state.selectedSetting = "pet";
     state.open = true;
+    saveUserSettings();
+    render();
+    return;
+  }
+  if (target.dataset.settingValue) {
+    state.userSettings[target.dataset.settingValue] = target.dataset.settingNext;
     saveUserSettings();
     render();
     return;
