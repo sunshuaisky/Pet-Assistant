@@ -1,8 +1,5 @@
 export const defaultAppearanceSettings = {
   appearanceMode: "system",
-  reduceTransparency: false,
-  increaseContrast: false,
-  glassStrength: "medium",
 };
 
 export const defaultUserSettings = {
@@ -22,10 +19,6 @@ export function normalizeRoute(route) {
 
 export function normalizeAppearanceMode(value) {
   return value === "light" || value === "dark" || value === "system" ? value : "system";
-}
-
-export function normalizeGlassStrength(value) {
-  return value === "low" || value === "high" || value === "medium" ? value : "medium";
 }
 
 const stableTimestamp = new Date(0).toISOString();
@@ -65,16 +58,14 @@ export function normalizeUserSettings(settings = {}) {
   const input = settings && typeof settings === "object" ? settings : {};
   return {
     ...defaultUserSettings,
-    ...input,
+    showBadge: input.showBadge ?? defaultUserSettings.showBadge,
+    showStatus: input.showStatus ?? defaultUserSettings.showStatus,
     currentPetId: input.currentPetId || "tuxie",
     importedPets: Array.isArray(input.importedPets)
       ? input.importedPets.map(normalizePet).filter(Boolean)
       : [],
     renamedPets: input.renamedPets && typeof input.renamedPets === "object" ? input.renamedPets : {},
     appearanceMode: normalizeAppearanceMode(input.appearanceMode),
-    reduceTransparency: Boolean(input.reduceTransparency),
-    increaseContrast: Boolean(input.increaseContrast),
-    glassStrength: normalizeGlassStrength(input.glassStrength),
   };
 }
 
@@ -147,9 +138,19 @@ export function normalizeChatState(value) {
     };
   }
 
-  const conversations = Array.isArray(value?.conversations)
+  const normalizedConversations = Array.isArray(value?.conversations)
     ? value.conversations.map(normalizeConversation).filter(Boolean)
     : [];
+  const firstEmptyConversation = normalizedConversations.find(
+    (conversation) => conversation.title === "新对话" && conversation.messages.length === 0,
+  );
+  const conversations = normalizedConversations.filter(
+    (conversation) => (
+      conversation.title !== "新对话"
+      || conversation.messages.length > 0
+      || conversation.id === firstEmptyConversation?.id
+    ),
+  );
   if (!conversations.length) {
     const conversation = createConversation("新对话");
     return {

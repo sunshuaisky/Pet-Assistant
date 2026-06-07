@@ -73,6 +73,8 @@ const PET_POSITION_STORAGE_KEY = "phoenix-pet-position";
 const SETTINGS_STORAGE_KEY = "phoenix-pet-settings";
 const CHAT_STORAGE_KEY = "phoenix-pet-chat";
 const EMPTY_HISTORY = [];
+const MAX_CHAT_IMAGES = 4;
+const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const builtInPets = [
   {
@@ -89,10 +91,11 @@ const builtInPets = [
 ];
 
 const settingSections = [
-  { id: "appearance", title: "外观", subtitle: "主题与毛玻璃" },
+  { id: "appearance", title: "外观", subtitle: "主题" },
   { id: "display", title: "显示", subtitle: "宠物标记与位置" },
   { id: "pet", title: "宠物", subtitle: "导入与切换" },
   { id: "integrations", title: "集成", subtitle: "工具检测与跳转" },
+  { id: "chatApi", title: "聊天 API", subtitle: "OpenAI 兼容接口" },
 ];
 
 const routeItems = [
@@ -315,7 +318,7 @@ function sessionSubtitle(session) {
 function renderProviderMark(provider) {
   const title = providerName(provider);
   const initials = providerInitials[provider] || title.slice(0, 2).toUpperCase();
-  return `<span class="provider-mark" aria-hidden="true">${escapeHtml(initials)}</span>`;
+  return `<span class="app-icon" aria-hidden="true">${escapeHtml(initials)}</span>`;
 }
 
 function commitPetRename(id, value) {
@@ -369,6 +372,23 @@ const state = {
   chatState: loadChatState(),
   chatDraft: "",
   chatSearch: "",
+  chatSending: false,
+  chatAttachments: [],
+  chatAttachmentError: "",
+  chatStreamRequestId: "",
+  chatStreamMessageId: "",
+  chatApiActiveModel: "",
+  chatApiRequestedModel: "",
+  chatApiConfig: {
+    enabled: false,
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "",
+    model: "gpt-4.1-mini",
+    systemPrompt: "你是 Phoenix Pet 的聊天助手。回答简洁、准确。",
+    hasApiKey: false,
+  },
+  chatApiStatus: "",
+  chatApiBusy: false,
   petAction: "sleeping",
   dragAction: null,
   actionMenuOpen: false,
@@ -385,9 +405,6 @@ function syncThemeAttributes() {
   const root = document.documentElement;
   root.dataset.theme = effectiveTheme();
   root.dataset.appearanceMode = state.userSettings.appearanceMode;
-  root.dataset.glassStrength = state.userSettings.glassStrength;
-  root.dataset.reduceTransparency = String(state.userSettings.reduceTransparency);
-  root.dataset.increaseContrast = String(state.userSettings.increaseContrast);
 }
 
 function phaseLabel(phase) {
@@ -567,6 +584,7 @@ async function refreshSessionHistory(force = false) {
   try {
     const history = asArray(await invoke("list_session_history", {
       id: session.id,
+      provider: session.provider,
       sessionId: session.sessionId,
       cwd: session.cwd,
     }));
@@ -706,33 +724,17 @@ function renderPetActionMenu() {
 function renderPanelPetAvatar(pet) {
   const source = escapeHtml(petAssetSource(pet));
   const atlasStyle = pet.kind === "atlas"
-    ? `background-image: url('${source}'); background-size: ${46 * pet.columns}px ${50 * pet.rows}px;`
+    ? `background-image: url('${source}'); background-size: ${38 * pet.columns}px ${38 * pet.rows}px;`
     : `background-image: url('${source}');`;
-  return `<span class="panel-pet-avatar ${pet.kind === "atlas" ? "atlas" : "image"}" style="${atlasStyle}" aria-hidden="true"></span>`;
+  return `<span class="avatar ${pet.kind === "atlas" ? "atlas" : "image"}" style="${atlasStyle}" aria-hidden="true"></span>`;
 }
 
-function renderQuickAppearanceControls() {
-  if (state.route !== "chat") return "";
-  const options = [
-    ["dark", "深色"],
-    ["light", "浅色"],
-    ["system", "跟随系统"],
-  ];
-  return `
-    <div class="panel-appearance" aria-label="快速切换外观">
-      <span>外观:</span>
-      ${options.map(([value, label]) => `
-        <button
-          type="button"
-          class="${state.userSettings.appearanceMode === value ? "selected" : ""}"
-          data-setting-value="appearanceMode"
-          data-setting-next="${value}"
-        >
-          ${label}
-        </button>
-      `).join("")}
-    </div>
-  `;
+function renderMiniAvatar(pet) {
+  const source = escapeHtml(petAssetSource(pet));
+  const style = pet.kind === "atlas"
+    ? `background-image: url('${source}'); background-size: ${32 * pet.columns}px ${32 * pet.rows}px;`
+    : `background-image: url('${source}');`;
+  return `<span class="mini-avatar ${pet.kind === "atlas" ? "atlas" : "image"}" style="${style}" aria-hidden="true"></span>`;
 }
 
 function renderPetHub(session) {
@@ -759,15 +761,15 @@ function renderPetHub(session) {
       </button>
       ${state.actionMenuOpen ? renderPetActionMenu() : ""}
       <div class="pet-panel" role="dialog" aria-label="${escapeHtml(pet.name)} 功能面板">
-        <header class="panel-header">
-          <div class="panel-identity">
+        <header class="topbar">
+          <section class="identity">
             ${renderPanelPetAvatar(pet)}
-            <div class="panel-title">
+            <div>
               <strong>${escapeHtml(pet.name)}</strong>
-              <span>在线 · 心情 🙂 · 能量 87%</span>
+              <span><i class="online" aria-hidden="true"></i>在线 · 心情 ☺ · 能量 87%</span>
             </div>
-          </div>
-          <nav aria-label="面板视图">
+          </section>
+          <nav class="tabs" aria-label="页面">
             ${routeItems.map((item) => `
               <button
                 type="button"
@@ -778,15 +780,7 @@ function renderPetHub(session) {
               </button>
             `).join("")}
           </nav>
-          <div class="panel-tools">
-            ${renderQuickAppearanceControls()}
-            <button class="panel-close" type="button" data-panel-close aria-label="关闭功能面板">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M18 6 6 18"></path>
-                <path d="m6 6 12 12"></path>
-              </svg>
-            </button>
-          </div>
+          <button class="close" type="button" data-panel-close aria-label="关闭">×</button>
         </header>
         ${state.route === "monitor" ? renderMonitor() : state.route === "chat" ? renderChat() : renderSettings()}
       </div>
@@ -806,7 +800,79 @@ function appendChatMessage(role, text) {
   return selectedConversation(state.chatState).messages.at(-1);
 }
 
+function updateChatMessage(id, text) {
+  const conversation = selectedConversation(state.chatState);
+  const message = conversation?.messages.find((item) => item.id === id);
+  if (!message || !text || message.text === text) return;
+  message.text = text.slice(0, 12000);
+  message.timestamp = new Date().toISOString();
+  conversation.updatedAt = message.timestamp;
+  saveChatState();
+}
+
+function chatAttachmentSummary(text, attachments) {
+  return [text, attachments.length ? `[附加 ${attachments.length} 张图片]` : ""].filter(Boolean).join("\n");
+}
+
+function buildChatApiMessages(attachments) {
+  const messages = selectedConversation(state.chatState).messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({ role: message.role, content: message.text }));
+  if (!attachments.length || !messages.length) return messages;
+  const latest = messages[messages.length - 1];
+  latest.content = [
+    { type: "text", text: latest.content.replace(/\n?\[附加 \d+ 张图片\]$/, "") || "请查看图片。" },
+    ...attachments.map((attachment) => ({
+      type: "image_url",
+      image_url: { url: attachment.dataUrl },
+    })),
+  ];
+  return messages;
+}
+
+function readChatImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith("image/")) return reject(new Error("只能上传图片"));
+    if (file.size > MAX_CHAT_IMAGE_BYTES) return reject(new Error("单张图片不能超过 10MB"));
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      id: globalThis.crypto?.randomUUID?.() || `image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: file.name || "粘贴的图片",
+      dataUrl: String(reader.result || ""),
+    });
+    reader.onerror = () => reject(new Error("无法读取图片"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addChatImages(files) {
+  state.chatAttachmentError = "";
+  const available = MAX_CHAT_IMAGES - state.chatAttachments.length;
+  if (available <= 0) {
+    state.chatAttachmentError = "最多附加 4 张图片";
+    render();
+    return;
+  }
+  try {
+    const attachments = await Promise.all([...files].slice(0, available).map(readChatImage));
+    state.chatAttachments = [...state.chatAttachments, ...attachments];
+    if (files.length > available) state.chatAttachmentError = "最多附加 4 张图片";
+  } catch (error) {
+    state.chatAttachmentError = String(error);
+  }
+  render();
+}
+
 function createNewChatConversation() {
+  const current = selectedConversation(state.chatState);
+  if (current?.messages.length === 0 && current.title === "新对话") {
+    state.chatState.selectedConversationId = current.id;
+    state.chatDraft = "";
+    state.chatSearch = "";
+    saveChatState();
+    return;
+  }
+
   const conversation = createConversation("新对话");
   state.chatState = {
     conversations: [conversation, ...state.chatState.conversations],
@@ -845,14 +911,44 @@ function petChatReply(text) {
   return "我可以帮你看会话状态、审批提醒、集成检测和宠物设置。你也可以直接问我“现在状态如何”或“有没有待审批”。";
 }
 
-function submitChatMessage() {
+async function submitChatMessage() {
   const input = chatInput();
   const text = (input?.value || state.chatDraft).trim();
-  if (!text) return;
-  appendChatMessage("user", text);
+  const attachments = [...state.chatAttachments];
+  if ((!text && !attachments.length) || state.chatSending) return;
+  appendChatMessage("user", chatAttachmentSummary(text, attachments));
   state.chatDraft = "";
-  appendChatMessage("assistant", petChatReply(text));
+  state.chatAttachments = [];
+  state.chatAttachmentError = "";
+
+  if (!state.chatApiConfig.enabled) {
+    appendChatMessage("assistant", attachments.length ? "图片需要启用支持视觉能力的聊天 API 后才能发送。" : petChatReply(text));
+    render();
+    return;
+  }
+
+  state.chatSending = true;
+  state.chatStreamRequestId = globalThis.crypto?.randomUUID?.() || `chat-${Date.now()}`;
+  state.chatStreamMessageId = "";
   render();
+  try {
+    if (!invoke) throw new Error("桌面 API 不可用");
+    const response = await invoke("send_chat_message", {
+      messages: buildChatApiMessages(attachments),
+      requestId: state.chatStreamRequestId,
+    });
+    state.chatApiRequestedModel = response.requestedModel || state.chatApiConfig.model;
+    state.chatApiActiveModel = response.model || state.chatApiRequestedModel;
+    if (state.chatStreamMessageId) updateChatMessage(state.chatStreamMessageId, response.content);
+    else appendChatMessage("assistant", response.content || String(response));
+  } catch (error) {
+    appendChatMessage("assistant", `API 请求失败：${String(error)}`);
+  } finally {
+    state.chatSending = false;
+    state.chatStreamRequestId = "";
+    state.chatStreamMessageId = "";
+    render();
+  }
 }
 
 function renderChat() {
@@ -873,76 +969,104 @@ function renderChat() {
         text: `我是 ${pet.name}。你可以像 ChatGPT 一样和我连续对话，也可以问我当前工具状态。`,
         timestamp: new Date().toISOString(),
       }];
-  const attentionCount = state.sessions.filter(
-    (item) => item.needsApproval || item.needsInput || item.phase === "approval" || item.phase === "input",
-  ).length;
-  const activeCount = state.sessions.filter((item) => item.phase === "processing").length;
-
   return `
-    <section class="chat-layout" aria-label="${escapeHtml(pet.name)} 聊天">
-      <aside class="chat-sidebar">
-        <div class="chat-sidebar-head">
-          <h2>对话</h2>
-          <button type="button" data-chat-new>新对话</button>
+    <section class="view chat active" data-view="chat">
+      <aside class="sidebar">
+        <div class="side-head">
+          <strong>对话</strong>
+          <span><button class="mini-button" type="button" data-chat-new>新对话 ＋</button></span>
         </div>
         <input
-          class="chat-search"
+          class="search"
           type="search"
-          placeholder="搜索对话"
+          placeholder="⌕　搜索对话"
           aria-label="搜索对话"
           data-chat-search
           value="${escapeHtml(state.chatSearch)}"
         />
-        <div class="chat-conversation-list">
+        <div class="chat-list">
           ${conversations.length ? conversations.map((item) => `
             <button
-              class="${item.id === conversation.id ? "selected" : ""}"
+              class="chat-item ${item.id === conversation.id ? "active" : ""}"
               type="button"
               data-chat-select="${escapeHtml(item.id)}"
             >
-              <b>${escapeHtml(item.title)}</b>
-              <small>${item.messages.at(-1)?.text ? escapeHtml(item.messages.at(-1).text) : "还没有消息"}</small>
+              <div>
+                <b>${escapeHtml(item.title)}</b>
+                <small>${item.messages.at(-1)?.text ? escapeHtml(item.messages.at(-1).text) : "还没有消息"}</small>
+              </div>
+              <span class="time">${formatShortTime(item.updatedAt)}</span>
             </button>
           `).join("") : `<div class="chat-search-empty">没有匹配的对话</div>`}
         </div>
-        <div class="chat-monitor-strip">
-          <span class="${attentionCount ? "attention" : ""}">${attentionCount} 待处理</span>
-          <span>${activeCount} 运行中</span>
-        </div>
       </aside>
-      <div class="chat-stage">
-        <header class="chat-stage-head">
-          <div>
-            <h2>Tuxie Chat</h2>
-            <p>${escapeHtml(conversation.title)}</p>
-          </div>
-          <span class="assistant-pill">本地助手</span>
-          <span class="assistant-pill">上下文独立</span>
-        </header>
-        <div class="chat-thread" aria-live="polite">
+      <section class="chat-main">
+        <div class="chat-title">${escapeHtml(pet.name)} Chat</div>
+        <div class="messages" aria-live="polite">
           ${messages.map(renderChatMessage).join("")}
         </div>
-        <form class="chat-composer" data-chat-form>
+        <form class="composer" data-chat-form>
+          ${state.chatAttachments.length ? `
+            <div class="chat-attachments">
+              ${state.chatAttachments.map((attachment) => `
+                <span class="chat-attachment">
+                  <img src="${attachment.dataUrl}" alt="${escapeHtml(attachment.name)}" />
+                  <button type="button" data-chat-attachment-remove="${attachment.id}" aria-label="移除图片">×</button>
+                </span>
+              `).join("")}
+            </div>
+          ` : ""}
+          ${state.chatAttachmentError ? `<span class="chat-attachment-error">${escapeHtml(state.chatAttachmentError)}</span>` : ""}
           <textarea
             data-chat-input
             rows="2"
             maxlength="1200"
-            placeholder="给 Tuxie 发消息..."
+            placeholder="${state.chatSending ? "正在等待 API 回复..." : `给 ${escapeHtml(pet.name)} 发消息...`}"
+            ${state.chatSending ? "disabled" : ""}
           >${escapeHtml(state.chatDraft)}</textarea>
-          <button class="primary" type="submit" aria-label="发送">发送</button>
-          <small>Enter 换行 · ⌘ Enter 发送</small>
+          <div class="composer-tools">
+            <input data-chat-image-input type="file" accept="image/*" multiple hidden />
+            <button class="composer-icon" type="button" data-chat-image-open aria-label="上传图片" title="上传图片">
+              <span class="image-upload-icon" aria-hidden="true"></span>
+            </button>
+            <button class="send" type="submit" aria-label="发送" ${state.chatSending ? "disabled" : ""}>➤</button>
+          </div>
         </form>
-      </div>
+      </section>
     </section>
   `;
 }
 
+function formatShortTime(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  const now = new Date();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  if (date.toDateString() === now.toDateString()) return `${hours}:${minutes}`;
+  return "昨天";
+}
+
 function renderChatMessage(message) {
+  const pet = currentPet();
+  const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
+  if (message.role === "user") {
+    return `
+      <article class="message user">
+        <div class="message-body">
+          <span class="time">${time}</span>
+          <div class="bubble"><p>${escapeHtml(message.text)}</p></div>
+        </div>
+        <span class="person">●</span>
+      </article>
+    `;
+  }
   return `
-    <article class="chat-message ${message.role}">
-      <div class="chat-bubble">
-        <span>${message.role === "user" ? "你" : escapeHtml(currentPet().name)}</span>
-        <p>${escapeHtml(message.text)}</p>
+    <article class="message">
+      ${renderMiniAvatar(pet)}
+      <div class="message-body">
+        <span class="time">${time}</span>
+        <div class="bubble"><p>${escapeHtml(message.text)}</p></div>
       </div>
     </article>
   `;
@@ -958,12 +1082,13 @@ function renderMonitor() {
     (session) => session.needsApproval || session.needsInput || session.phase === "approval" || session.phase === "input",
   ).length;
   return `
-    <div class="sessions-layout">
-      <div class="session-list" aria-label="会话列表">
-        <div class="session-list-head">
-          <span>${state.sessions.length || 0} 个会话</span>
-          <b>${attentionCount ? `${attentionCount} 个待处理` : activeCount ? `${activeCount} 个运行中` : "状态稳定"}</b>
+    <section class="view monitor active" data-view="monitor">
+      <aside class="sidebar">
+        <div class="side-head">
+          <strong>${state.sessions.length || 0} 个会话</strong>
+          <span><b class="pending-dot">●</b> ${attentionCount ? `${attentionCount} 个待处理` : activeCount ? `${activeCount} 个运行中` : "状态稳定"}</span>
         </div>
+        <div class="session-list">
         ${
           state.sessions.length
             ? state.sessions.map(renderSessionRow).join("")
@@ -972,16 +1097,45 @@ function renderMonitor() {
                 <span>启动 Codex、Claude Code 或 Gemini 后，这里会显示审批、输入和运行状态。</span>
               </div>`
         }
-      </div>
-      <article class="session-detail">
-        <div class="session-detail-scroll">
-          ${renderSessionSummary(selected)}
-          ${renderSessionHistory(selected)}
         </div>
+      </aside>
+      <section class="stage">
+        ${renderSessionHistory(selected)}
+        ${renderApprovalWarning(selected)}
         ${renderSessionActions(selected, needsApproval, canFocus)}
-      </article>
-    </div>
+      </section>
+    </section>
   `;
+}
+
+function renderCurrentCard(session) {
+  const integration = effectiveIntegrationForSession(session);
+  const status = session.needsApproval || session.needsInput ? "需要你处理" : phaseLabel(session.phase);
+  const statusTagClass = session.needsApproval || session.phase === "approval" ? "warn"
+    : session.phase === "processing" ? "info"
+    : session.phase === "completed" ? "ok" : "";
+  const integrationStatus = integration ? integrationStatusLabel(integration.status) : "界面状态";
+  const integrationTagClass = integration?.running ? "ok" : integration?.installed ? "ok" : "";
+  return `
+    <article class="current-card">
+      ${renderProviderMark(session.provider)}
+      <div>
+        <h2>${escapeHtml(sessionDisplayTitle(session))}</h2>
+        <p>${escapeHtml(providerName(session.provider))} · ${escapeHtml(session.kind || integration?.kind || "会话")}</p>
+        <p>${escapeHtml(session.message || "等待新的事件。")}</p>
+      </div>
+      <div class="status-row">
+        <span class="tag ${statusTagClass}">${escapeHtml(status)}</span>
+        <span class="tag ${integrationTagClass}">${escapeHtml(integrationStatus)}</span>
+        <span class="tag">${escapeHtml(session.updatedAt || "刚刚")}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderApprovalWarning(session) {
+  if (!session.needsApproval && session.phase !== "approval") return "";
+  return `<div class="warning">ⓘ 以上操作需要你的审批才能继续执行。</div>`;
 }
 
 function renderSessionSummary(session) {
@@ -1010,22 +1164,19 @@ function renderSessionSummary(session) {
 function renderSessionActions(session, needsApproval, canFocus) {
   if (needsApproval) {
     return `
-      <footer class="approval-actions">
-        ${renderApprovalNotice(session)}
-        <div class="approval-buttons">
-          <button class="primary" data-approve="${session.id}">批准</button>
-          <button class="primary" data-approve-session="${session.id}">本次会话允许</button>
-          <button class="danger" data-reject="${session.id}">拒绝</button>
-        </div>
-      </footer>
+      <div class="actions">
+        <button class="action primary" data-approve="${session.id}">批准</button>
+        <button class="action" data-approve-session="${session.id}">本次会话允许</button>
+        <button class="action danger" data-reject="${session.id}">拒绝</button>
+      </div>
     `;
   }
 
   if (canFocus) {
     return `
-      <footer>
-        <button class="primary" data-focus="${session.id}">跳回现场</button>
-      </footer>
+      <div class="actions">
+        <button class="action primary" data-focus="${session.id}">跳回现场</button>
+      </div>
     `;
   }
 
@@ -1236,14 +1387,18 @@ function renderSessionFacts(session) {
 }
 
 function renderSessionRow(session) {
+  const tagClass = session.needsApproval || session.phase === "approval" ? "warn"
+    : session.needsInput || session.phase === "input" ? "info"
+    : session.phase === "processing" ? "info"
+    : session.phase === "completed" ? "ok" : "";
   return `
-    <button class="session-row ${session.id === state.selectedId ? "selected" : ""}" data-select="${session.id}">
+    <button class="session ${session.id === state.selectedId ? "active" : ""}" data-select="${session.id}">
       ${renderProviderMark(session.provider)}
-      <span class="row-body">
-        <strong>${escapeHtml(sessionDisplayTitle(session))}</strong>
+      <div>
+        <b>${escapeHtml(sessionDisplayTitle(session))}</b>
         <small>${escapeHtml(sessionSubtitle(session))}</small>
-      </span>
-      <span class="phase ${session.phase}">${phaseLabel(session.phase)}</span>
+      </div>
+      <span class="tag ${tagClass}">${phaseLabel(session.phase)}</span>
     </button>
   `;
 }
@@ -1251,27 +1406,33 @@ function renderSessionRow(session) {
 function renderSettings() {
   const selected = settingSections.find((section) => section.id === state.selectedSetting) ?? settingSections[0];
   return `
-    <div class="settings-layout">
-      <aside>
-        ${settingSections.map((section) => `
-          <button class="${section.id === selected.id ? "selected" : ""}" data-setting="${section.id}">
-            <b>${section.title}</b>
-            <small>${section.subtitle}</small>
-          </button>
-        `).join("")}
+    <section class="view settings active" data-view="settings">
+      <aside class="settings-side">
+        <nav class="settings-nav">
+          ${settingSections.map((section) => `
+            <button class="${section.id === selected.id ? "active" : ""}" data-setting="${section.id}">
+              <i>${sectionIcon(section.id)}</i> ${section.title}
+            </button>
+          `).join("")}
+        </nav>
       </aside>
-      <section class="settings-panel">
+      <section class="settings-main">
         ${renderSettingsPanel(selected.id)}
       </section>
-    </div>
+    </section>
   `;
+}
+
+function sectionIcon(id) {
+  return { appearance: "◔", display: "▱", pet: "♣", integrations: "✣", chatApi: "⌁" }[id] || "◔";
 }
 
 function renderSettingsPanel(id) {
   if (id === "appearance") return renderAppearancePanel();
+  if (id === "chatApi") return renderChatApiPanel();
   if (id === "pet") {
     return `
-      <div class="settings-panel-head">
+      <div class="settings-title">
         <h2>宠物</h2>
         <p>管理当前外观、名称和导入资源。</p>
       </div>
@@ -1286,7 +1447,7 @@ function renderSettingsPanel(id) {
   }
   if (id === "integrations") {
     return `
-      <div class="settings-panel-head">
+      <div class="settings-title">
         <h2>集成</h2>
         <p>检查本机 AI 工具，并在需要时跳回对应应用。</p>
       </div>
@@ -1300,18 +1461,98 @@ function renderSettingsPanel(id) {
     `;
   }
   return `
-    <div class="settings-panel-head">
+    <div class="settings-title">
       <h2>显示</h2>
       <p>控制桌面宠物在平时和提醒场景中的信息密度。</p>
     </div>
-    <div class="setting-group">
-      ${renderSettingToggle("显示会话徽标", "showBadge", "在宠物旁标记待审批或运行中的会话数量。")}
-      ${renderSettingToggle("显示状态标签", "showStatus", "保留一个短标签，方便扫一眼知道当前状态。")}
-    </div>
+    ${renderSettingToggle("显示会话徽标", "showBadge", "在宠物旁标记待审批或运行中的会话数量。")}
+    ${renderSettingToggle("显示状态标签", "showStatus", "保留一个短标签，方便扫一眼知道当前状态。")}
     <div class="settings-actions">
       <button class="primary" type="button" data-setting-action="reset-position">重置到右下角</button>
     </div>
   `;
+}
+
+function renderChatApiPanel() {
+  const config = state.chatApiConfig;
+  return `
+    <div class="settings-title">
+      <h2>聊天 API</h2>
+      <p>连接 OpenAI 兼容接口，用于聊天页的连续对话。</p>
+    </div>
+    <div class="api-config-form">
+      <label class="setting-row compact">
+        <span>
+          <strong>启用聊天 API</strong>
+          <p>关闭时继续使用内置的本地回复。</p>
+        </span>
+        <input type="checkbox" data-chat-api-field="enabled" ${config.enabled ? "checked" : ""} />
+      </label>
+      <label class="api-field">
+        <span>API Base URL</span>
+        <input type="url" data-chat-api-field="baseUrl" value="${escapeHtml(config.baseUrl)}" placeholder="https://api.openai.com/v1" />
+      </label>
+      <label class="api-field">
+        <span>API Key</span>
+        <input type="password" data-chat-api-field="apiKey" value="${escapeHtml(config.apiKey)}" placeholder="${config.hasApiKey ? "已保存，留空则保持不变" : "sk-..."}" autocomplete="off" />
+      </label>
+      <label class="api-field">
+        <span>模型</span>
+        <input type="text" data-chat-api-field="model" value="${escapeHtml(config.model)}" placeholder="gpt-4.1-mini" />
+      </label>
+      <label class="api-field">
+        <span>系统提示词</span>
+        <textarea rows="4" data-chat-api-field="systemPrompt">${escapeHtml(config.systemPrompt)}</textarea>
+      </label>
+    </div>
+    <div class="settings-actions">
+      <button class="primary" type="button" data-setting-action="save-chat-api" ${state.chatApiBusy ? "disabled" : ""}>保存配置</button>
+      <button type="button" data-setting-action="test-chat-api" ${state.chatApiBusy ? "disabled" : ""}>测试连接</button>
+    </div>
+    ${state.chatApiStatus ? `<p class="api-status">${escapeHtml(state.chatApiStatus)}</p>` : ""}
+    <p class="setting-caption">API Key 由桌面端保存在应用数据目录中，不会写入浏览器本地存储。</p>
+  `;
+}
+
+async function refreshChatApiConfig() {
+  if (!invoke) return;
+  try {
+    const config = await invoke("get_chat_api_config");
+    state.chatApiConfig = { ...state.chatApiConfig, ...config, apiKey: "" };
+    if (state.route === "settings" && state.selectedSetting === "chatApi") render();
+  } catch (error) {
+    state.chatApiStatus = `读取配置失败：${String(error)}`;
+  }
+}
+
+async function saveChatApiSettings({ test = false } = {}) {
+  if (!invoke || state.chatApiBusy) return;
+  state.chatApiBusy = true;
+  state.chatApiStatus = test ? "正在保存并测试连接..." : "正在保存...";
+  render();
+  try {
+    const config = await invoke("save_chat_api_config", {
+      config: {
+        enabled: state.chatApiConfig.enabled,
+        baseUrl: state.chatApiConfig.baseUrl,
+        apiKey: state.chatApiConfig.apiKey || null,
+        model: state.chatApiConfig.model,
+        systemPrompt: state.chatApiConfig.systemPrompt,
+      },
+    });
+    state.chatApiConfig = { ...state.chatApiConfig, ...config, apiKey: "" };
+    if (test) {
+      const response = await invoke("test_chat_api_config");
+      state.chatApiStatus = `连接成功：${response}`;
+    } else {
+      state.chatApiStatus = "配置已保存";
+    }
+  } catch (error) {
+    state.chatApiStatus = `${test ? "连接测试失败" : "保存失败"}：${String(error)}`;
+  } finally {
+    state.chatApiBusy = false;
+    render();
+  }
 }
 
 function renderPetRow(pet) {
@@ -1402,10 +1643,10 @@ function renderIntegrationRow(integration) {
 
 function renderSettingToggle(label, key, description = "") {
   return `
-    <label class="setting-line">
+    <label class="setting-row compact">
       <span>
-        <b>${label}</b>
-        ${description ? `<small>${description}</small>` : ""}
+        <strong>${label}</strong>
+        ${description ? `<p>${description}</p>` : ""}
       </span>
       <input type="checkbox" data-setting-toggle="${key}" ${state.userSettings[key] ? "checked" : ""} />
     </label>
@@ -1414,50 +1655,66 @@ function renderSettingToggle(label, key, description = "") {
 
 function renderSegmentedSetting(label, description, key, options) {
   return `
-    <div class="setting-line segmented-setting">
-      <span>
-        <b>${label}</b>
-        <small>${description}</small>
-      </span>
-      <span class="segmented-control" role="group" aria-label="${escapeHtml(label)}">
+    <div class="setting-row">
+      <label>${label}</label>
+      <div class="triple" role="group" aria-label="${escapeHtml(label)}">
         ${options.map((option) => `
           <button
             type="button"
-            class="${state.userSettings[key] === option.value ? "selected" : ""}"
+            class="${state.userSettings[key] === option.value ? "active" : ""}"
             data-setting-value="${key}"
             data-setting-next="${option.value}"
           >
             ${option.label}
           </button>
         `).join("")}
-      </span>
+      </div>
+      <span></span>
     </div>
   `;
 }
 
 function renderAppearancePanel() {
   return `
-    <div class="settings-panel-head">
+    <div class="settings-title">
       <h2>外观</h2>
-      <p>选择面板主题，也可以跟随系统自动切换。</p>
+      <p>选择面板主题，也可以跟随系统自动切换</p>
     </div>
-    <div class="setting-group">
-      ${renderSegmentedSetting("主题", "控制浅色、深色或跟随系统。", "appearanceMode", [
-        { value: "light", label: "浅色" },
-        { value: "dark", label: "深色" },
-        { value: "system", label: "跟随系统" },
-      ])}
-      ${renderSegmentedSetting("毛玻璃强度", "调节面板背景的模糊与饱和度。", "glassStrength", [
-        { value: "low", label: "低" },
-        { value: "medium", label: "中" },
-        { value: "high", label: "高" },
-      ])}
-      ${renderSettingToggle("降低透明度", "reduceTransparency", "关闭大面积毛玻璃，提升可读性和性能。")}
-      ${renderSettingToggle("增强对比度", "increaseContrast", "提高文字、边框和状态标签对比度。")}
-    </div>
+    ${renderSegmentedSetting("主题", "控制浅色、深色或跟随系统。", "appearanceMode", [
+      { value: "light", label: "☼　浅色" },
+      { value: "dark", label: "☾　深色" },
+      { value: "system", label: "▱　跟随系统" },
+    ])}
     <div class="theme-preview-strip" aria-hidden="true">
-      <span><b>浅色预览</b><small>瓷白毛玻璃</small></span>
-      <span><b>深色预览</b><small>烟黑毛玻璃</small></span>
+      ${renderThemePreview("light", "浅色预览")}
+      ${renderThemePreview("dark", "深色预览")}
+    </div>
+  `;
+}
+
+function renderThemePreview(tone, label) {
+  return `
+    <div class="theme-preview-card theme-preview-${tone}">
+      <strong class="theme-preview-label">${label}</strong>
+      <div class="theme-preview-window">
+        <div class="preview-traffic-lights">
+          <i></i><i></i><i></i>
+        </div>
+        <div class="preview-shell">
+          <aside>
+            <span class="preview-nav-selected"><b></b><em>会话</em></span>
+            <span><b></b><em></em></span>
+            <span><b></b><em></em></span>
+            <span><b></b><em></em></span>
+          </aside>
+          <main>
+            <span class="preview-title-line"></span>
+            <span class="preview-accent-line"></span>
+            <span class="preview-body-line"></span>
+            <div class="preview-content-box"></div>
+          </main>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -1511,12 +1768,12 @@ function syncChatScroll(force = false) {
 
   const messages = selectedConversation(state.chatState)?.messages || [];
   const latest = messages[messages.length - 1];
-  const signature = `${messages.length}:${latest?.id || ""}`;
+  const signature = `${messages.length}:${latest?.id || ""}:${latest?.text?.length || 0}`;
   if (!force && signature === lastChatScrollSignature) return;
   lastChatScrollSignature = signature;
 
   window.requestAnimationFrame(() => {
-    const thread = document.querySelector(".chat-thread");
+    const thread = document.querySelector(".messages");
     if (!thread) return;
     thread.scrollTop = thread.scrollHeight;
     chatInput()?.focus();
@@ -1872,6 +2129,16 @@ function handlePetPointerUp(event) {
 document.addEventListener("click", async (event) => {
   const target = event.target.closest?.("button");
   if (!target) return;
+  if (target.dataset.chatImageOpen !== undefined) {
+    document.querySelector("[data-chat-image-input]")?.click();
+    return;
+  }
+  if (target.dataset.chatAttachmentRemove) {
+    state.chatAttachments = state.chatAttachments.filter((attachment) => attachment.id !== target.dataset.chatAttachmentRemove);
+    state.chatAttachmentError = "";
+    render();
+    return;
+  }
   if (target.closest?.("[data-chat-form]")) return;
 
   if (target.dataset.panelClose !== undefined) {
@@ -1996,6 +2263,14 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
+  if (target.dataset.settingAction === "save-chat-api") {
+    await saveChatApiSettings();
+    return;
+  }
+  if (target.dataset.settingAction === "test-chat-api") {
+    await saveChatApiSettings({ test: true });
+    return;
+  }
   if (target.dataset.integrationFocus) {
     await focusSession(`${target.dataset.integrationFocus}-local`);
     return;
@@ -2039,6 +2314,15 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.dataset?.chatImageInput !== undefined) {
+    addChatImages(event.target.files || []);
+    event.target.value = "";
+    return;
+  }
+  if (event.target.dataset?.chatApiField === "enabled") {
+    state.chatApiConfig.enabled = event.target.checked;
+    return;
+  }
   const key = event.target.dataset?.settingToggle;
   if (!key) return;
 
@@ -2048,6 +2332,11 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  const chatApiField = event.target.dataset?.chatApiField;
+  if (chatApiField && chatApiField !== "enabled") {
+    state.chatApiConfig[chatApiField] = event.target.value;
+    return;
+  }
   if (event.target.dataset?.chatSearch !== undefined) {
     state.chatSearch = event.target.value;
     render();
@@ -2061,6 +2350,17 @@ document.addEventListener("submit", (event) => {
   if (event.target.dataset?.chatForm === undefined) return;
   event.preventDefault();
   submitChatMessage();
+});
+
+document.addEventListener("paste", (event) => {
+  if (event.target.dataset?.chatInput === undefined) return;
+  const images = [...(event.clipboardData?.items || [])]
+    .filter((item) => item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+  if (!images.length) return;
+  event.preventDefault();
+  addChatImages(images);
 });
 
 document.addEventListener("pointerdown", handlePetPointerDown);
@@ -2088,7 +2388,7 @@ document.addEventListener("keydown", (event) => {
     render();
     return;
   }
-  if (event.target.dataset?.chatInput !== undefined && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+  if (event.target.dataset?.chatInput !== undefined && event.key === "Enter" && !event.metaKey && !event.ctrlKey) {
     event.preventDefault();
     submitChatMessage();
     return;
@@ -2110,6 +2410,18 @@ window.addEventListener("resize", () => {
 });
 
 if (listen) {
+  listen("chat://chunk", (event) => {
+    const chunk = event.payload || {};
+    if (!state.chatSending || chunk.requestId !== state.chatStreamRequestId || !chunk.delta) return;
+    if (chunk.model) state.chatApiActiveModel = chunk.model;
+    if (!state.chatStreamMessageId) {
+      state.chatStreamMessageId = appendChatMessage("assistant", chunk.delta)?.id || "";
+    } else {
+      const message = selectedConversation(state.chatState).messages.find((item) => item.id === state.chatStreamMessageId);
+      updateChatMessage(state.chatStreamMessageId, `${message?.text || ""}${chunk.delta}`);
+    }
+    render();
+  });
   listen("sessions://changed", (event) => {
     if (setSessions(event.payload) || !hasRendered) render();
     refreshSessionHistory();
@@ -2125,5 +2437,6 @@ configureOverlayWindow();
 refreshIntegrations();
 refreshSessions();
 refreshSessionHistory();
+refreshChatApiConfig();
 window.setInterval(refreshSessions, SESSION_POLL_MS);
 window.setInterval(refreshSessionHistory, SESSION_HISTORY_POLL_MS);

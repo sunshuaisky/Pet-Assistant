@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -139,6 +140,100 @@ struct AppState {
     sessions: Mutex<Vec<IslandSession>>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatApiConfig {
+    enabled: bool,
+    base_url: String,
+    api_key: String,
+    model: String,
+    system_prompt: String,
+}
+
+impl Default for ChatApiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            base_url: "https://api.openai.com/v1".into(),
+            api_key: String::new(),
+            model: "gpt-4.1-mini".into(),
+            system_prompt: "你是 Phoenix Pet 的聊天助手。回答简洁、准确。".into(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatApiConfigInput {
+    enabled: bool,
+    base_url: String,
+    api_key: Option<String>,
+    model: String,
+    system_prompt: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatApiConfigView {
+    enabled: bool,
+    base_url: String,
+    model: String,
+    system_prompt: String,
+    has_api_key: bool,
+}
+
+impl From<&ChatApiConfig> for ChatApiConfigView {
+    fn from(config: &ChatApiConfig) -> Self {
+        Self {
+            enabled: config.enabled,
+            base_url: config.base_url.clone(),
+            model: config.model.clone(),
+            system_prompt: config.system_prompt.clone(),
+            has_api_key: !config.api_key.is_empty(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatApiMessage {
+    role: String,
+    content: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionResponse {
+    #[serde(default)]
+    model: String,
+    choices: Vec<ChatCompletionChoice>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatApiReply {
+    content: String,
+    requested_model: String,
+    model: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatStreamChunk {
+    request_id: String,
+    delta: String,
+    model: String,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionChoice {
+    message: ChatCompletionMessage,
+}
+
+#[derive(Deserialize)]
+struct ChatCompletionMessage {
+    content: String,
+}
+
 const BRIDGE_ACTIVE_SESSION_TTL_MS: u128 = 12 * 60 * 60 * 1000;
 const SESSION_WATCH_INTERVAL_MS: u64 = 1_500;
 const PROCESS_CWD_CACHE_TTL_MS: u128 = 30_000;
@@ -159,13 +254,291 @@ fn list_integrations() -> Result<Vec<IntegrationStatus>, String> {
     Ok(detect_integrations())
 }
 
+fn chat_api_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|directory| directory.join("chat-api.json"))
+        .map_err(|error| format!("无法定位聊天 API 配置目录：{error}"))
+}
+
+fn load_chat_api_config_from_path(path: &Path) -> Result<ChatApiConfig, String> {
+    if !path.exists() {
+        return Ok(ChatApiConfig::default());
+    }
+    let contents =
+        fs::read_to_string(path).map_err(|error| format!("无法读取聊天 API 配置：{error}"))?;
+    serde_json::from_str(&contents).map_err(|error| format!("聊天 API 配置格式无效：{error}"))
+}
+
+fn load_chat_api_config(app: &tauri::AppHandle) -> Result<ChatApiConfig, String> {
+    load_chat_api_config_from_path(&chat_api_config_path(app)?)
+}
+
+fn normalize_chat_api_config(
+    input: ChatApiConfigInput,
+    previous_key: &str,
+) -> Result<ChatApiConfig, String> {
+    let base_url = input.base_url.trim().trim_end_matches('/').to_string();
+    if !(base_url.starts_with("https://") || base_url.starts_with("http://")) {
+        return Err("API Base URL 必须以 http:// 或 https:// 开头".into());
+    }
+    let model = input.model.trim().to_string();
+    if model.is_empty() {
+        return Err("模型名称不能为空".into());
+    }
+    let supplied_key = input.api_key.unwrap_or_default().trim().to_string();
+    Ok(ChatApiConfig {
+        enabled: input.enabled,
+        base_url,
+        api_key: if supplied_key.is_empty() {
+            previous_key.into()
+        } else {
+            supplied_key
+        },
+        model,
+        system_prompt: input.system_prompt.trim().to_string(),
+    })
+}
+
+fn save_chat_api_config_to_path(path: &Path, config: &ChatApiConfig) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("无法创建聊天 API 配置目录：{error}"))?;
+    }
+    let contents = serde_json::to_string_pretty(config)
+        .map_err(|error| format!("无法序列化聊天 API 配置：{error}"))?;
+    fs::write(path, contents).map_err(|error| format!("无法保存聊天 API 配置：{error}"))
+}
+
+#[tauri::command]
+fn get_chat_api_config(app: tauri::AppHandle) -> Result<ChatApiConfigView, String> {
+    let config = load_chat_api_config(&app)?;
+    Ok(ChatApiConfigView::from(&config))
+}
+
+#[tauri::command]
+fn save_chat_api_config(
+    app: tauri::AppHandle,
+    config: ChatApiConfigInput,
+) -> Result<ChatApiConfigView, String> {
+    let path = chat_api_config_path(&app)?;
+    let previous = load_chat_api_config_from_path(&path)?;
+    let config = normalize_chat_api_config(config, &previous.api_key)?;
+    save_chat_api_config_to_path(&path, &config)?;
+    Ok(ChatApiConfigView::from(&config))
+}
+
+async fn request_chat_completion(
+    config: &ChatApiConfig,
+    messages: Vec<ChatApiMessage>,
+) -> Result<ChatApiReply, String> {
+    if config.api_key.is_empty() {
+        return Err("请先填写 API Key".into());
+    }
+    let mut request_messages = Vec::new();
+    if !config.system_prompt.is_empty() {
+        request_messages.push(ChatApiMessage {
+            role: "system".into(),
+            content: serde_json::Value::String(config.system_prompt.clone()),
+        });
+    }
+    request_messages.extend(messages.into_iter().filter(chat_message_has_content));
+    if request_messages.is_empty() {
+        return Err("没有可发送的聊天消息".into());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|error| format!("无法创建聊天 API 请求：{error}"))?;
+    let response = client
+        .post(format!("{}/chat/completions", config.base_url))
+        .bearer_auth(&config.api_key)
+        .json(&serde_json::json!({
+            "model": config.model,
+            "messages": request_messages,
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("聊天 API 请求失败：{error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        let detail = detail.chars().take(300).collect::<String>();
+        return Err(format!("聊天 API 返回 {status}：{detail}"));
+    }
+    let completion: ChatCompletionResponse = response
+        .json()
+        .await
+        .map_err(|error| format!("无法解析聊天 API 响应：{error}"))?;
+    let content = completion
+        .choices
+        .into_iter()
+        .next()
+        .map(|choice| choice.message.content.trim().to_string())
+        .filter(|content| !content.is_empty())
+        .ok_or_else(|| "聊天 API 未返回内容".to_string())?;
+    Ok(ChatApiReply {
+        content,
+        requested_model: config.model.clone(),
+        model: if completion.model.is_empty() {
+            config.model.clone()
+        } else {
+            completion.model
+        },
+    })
+}
+
+fn chat_message_has_content(message: &ChatApiMessage) -> bool {
+    match &message.content {
+        serde_json::Value::String(value) => !value.trim().is_empty(),
+        serde_json::Value::Array(value) => !value.is_empty(),
+        value => !value.is_null(),
+    }
+}
+
+fn chat_stream_chunk_from_line(line: &str) -> Result<Option<(String, String)>, String> {
+    let Some(data) = line.trim().strip_prefix("data:") else {
+        return Ok(None);
+    };
+    let data = data.trim();
+    if data.is_empty() || data == "[DONE]" {
+        return Ok(None);
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(data).map_err(|error| format!("无法解析流式响应：{error}"))?;
+    let delta = value["choices"][0]["delta"]["content"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let model = value["model"].as_str().unwrap_or_default().to_string();
+    Ok(Some((delta, model)))
+}
+
+async fn stream_chat_completion(
+    app: &tauri::AppHandle,
+    config: &ChatApiConfig,
+    messages: Vec<ChatApiMessage>,
+    request_id: &str,
+) -> Result<ChatApiReply, String> {
+    if config.api_key.is_empty() {
+        return Err("请先填写 API Key".into());
+    }
+    let mut request_messages = Vec::new();
+    if !config.system_prompt.is_empty() {
+        request_messages.push(ChatApiMessage {
+            role: "system".into(),
+            content: serde_json::Value::String(config.system_prompt.clone()),
+        });
+    }
+    request_messages.extend(messages.into_iter().filter(chat_message_has_content));
+    if request_messages.is_empty() {
+        return Err("没有可发送的聊天消息".into());
+    }
+
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|error| format!("无法创建聊天 API 请求：{error}"))?
+        .post(format!("{}/chat/completions", config.base_url))
+        .bearer_auth(&config.api_key)
+        .json(&serde_json::json!({
+            "model": config.model,
+            "messages": request_messages,
+            "stream": true,
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("聊天 API 请求失败：{error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "聊天 API 返回 {status}：{}",
+            detail.chars().take(300).collect::<String>()
+        ));
+    }
+
+    let mut stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut content = String::new();
+    let mut model = String::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|error| format!("读取流式响应失败：{error}"))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+        while let Some(newline) = buffer.find('\n') {
+            let line = buffer[..newline].trim_end_matches('\r').to_string();
+            buffer.drain(..=newline);
+            if let Some((delta, response_model)) = chat_stream_chunk_from_line(&line)? {
+                if !response_model.is_empty() {
+                    model = response_model;
+                }
+                if !delta.is_empty() {
+                    content.push_str(&delta);
+                    let _ = app.emit(
+                        "chat://chunk",
+                        ChatStreamChunk {
+                            request_id: request_id.into(),
+                            delta,
+                            model: model.clone(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+    if content.is_empty() {
+        return Err("聊天 API 未返回内容".into());
+    }
+    Ok(ChatApiReply {
+        content,
+        requested_model: config.model.clone(),
+        model: if model.is_empty() {
+            config.model.clone()
+        } else {
+            model
+        },
+    })
+}
+
+#[tauri::command]
+async fn test_chat_api_config(app: tauri::AppHandle) -> Result<String, String> {
+    let config = load_chat_api_config(&app)?;
+    let reply = request_chat_completion(
+        &config,
+        vec![ChatApiMessage {
+            role: "user".into(),
+            content: serde_json::Value::String("请只回复 OK。".into()),
+        }],
+    )
+    .await?;
+    Ok(format!("{}（实际模型：{}）", reply.content, reply.model))
+}
+
+#[tauri::command]
+async fn send_chat_message(
+    app: tauri::AppHandle,
+    messages: Vec<ChatApiMessage>,
+    request_id: String,
+) -> Result<ChatApiReply, String> {
+    let config = load_chat_api_config(&app)?;
+    stream_chat_completion(&app, &config, messages, &request_id).await
+}
+
 #[tauri::command]
 fn list_session_history(
     id: String,
+    provider: Option<String>,
     session_id: Option<String>,
     cwd: Option<String>,
 ) -> Result<Vec<SessionHistoryItem>, String> {
-    let session_id = parse_bridge_ui_id(&id)
+    let bridge_identity = parse_bridge_ui_id(&id);
+    let history_provider = bridge_identity
+        .as_ref()
+        .map(|(provider, _session_id)| provider.clone())
+        .or(provider)
+        .unwrap_or_else(|| "codex".into());
+    let session_id = bridge_identity
         .map(|(_provider, session_id)| session_id)
         .or_else(|| {
             session_id
@@ -176,7 +549,9 @@ fn list_session_history(
         })
         .unwrap_or(id);
 
-    let path = if session_id.starts_with("process:") {
+    let path = if history_provider == "claude" {
+        find_claude_history_path(&session_id, cwd.as_deref())
+    } else if session_id.starts_with("process:") {
         if let Some(cwd) = cwd
             .as_deref()
             .map(str::trim)
@@ -184,17 +559,15 @@ fn list_session_history(
         {
             find_latest_codex_rollout_path_for_cwd(Path::new(cwd))
         } else {
-            find_latest_codex_rollout_path_for_current_dir()
-                .or_else(find_latest_codex_rollout_path)
+            find_latest_codex_rollout_path_for_current_dir().or_else(find_latest_codex_rollout_path)
         }
     } else {
-        find_codex_rollout_path(&session_id)
-            .or_else(|| {
-                cwd.as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .and_then(|value| find_latest_codex_rollout_path_for_cwd(Path::new(value)))
-            })
+        find_codex_rollout_path(&session_id).or_else(|| {
+            cwd.as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .and_then(|value| find_latest_codex_rollout_path_for_cwd(Path::new(value)))
+        })
     };
 
     let Some(path) = path else {
@@ -202,10 +575,17 @@ fn list_session_history(
     };
     let contents =
         fs::read_to_string(&path).map_err(|error| format!("无法读取会话历史：{error}"))?;
-    let mut history = contents
-        .lines()
-        .filter_map(history_item_from_jsonl_line)
-        .collect::<Vec<_>>();
+    let mut history = if history_provider == "claude" {
+        contents
+            .lines()
+            .flat_map(claude_history_items_from_jsonl_line)
+            .collect::<Vec<_>>()
+    } else {
+        contents
+            .lines()
+            .filter_map(history_item_from_jsonl_line)
+            .collect::<Vec<_>>()
+    };
 
     dedupe_adjacent_history_items(&mut history);
 
@@ -428,6 +808,77 @@ fn find_codex_rollout_path(session_id: &str) -> Option<PathBuf> {
     find_jsonl_file_containing(&root, session_id)
 }
 
+fn find_claude_history_path(session_id: &str, cwd: Option<&str>) -> Option<PathBuf> {
+    let root = env::var_os("HOME")
+        .map(PathBuf::from)?
+        .join(".claude")
+        .join("projects");
+    find_jsonl_file_containing(&root, session_id).or_else(|| {
+        cwd.map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| latest_claude_jsonl_for_cwd(&root, Path::new(value)))
+            .map(|(path, _modified)| path)
+    })
+}
+
+fn latest_claude_jsonl_for_cwd(root: &Path, cwd: &Path) -> Option<(PathBuf, SystemTime)> {
+    let entries = fs::read_dir(root).ok()?;
+    let mut latest: Option<(PathBuf, SystemTime)> = None;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(candidate) = latest_claude_jsonl_for_cwd(&path, cwd) {
+                if latest
+                    .as_ref()
+                    .map(|(_path, modified)| candidate.1 > *modified)
+                    .unwrap_or(true)
+                {
+                    latest = Some(candidate);
+                }
+            }
+            continue;
+        }
+
+        if path.extension().and_then(|value| value.to_str()) != Some("jsonl")
+            || !claude_history_matches_cwd(&path, cwd)
+        {
+            continue;
+        }
+
+        let modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(UNIX_EPOCH);
+        if latest
+            .as_ref()
+            .map(|(_path, previous)| modified > *previous)
+            .unwrap_or(true)
+        {
+            latest = Some((path, modified));
+        }
+    }
+
+    latest
+}
+
+fn claude_history_matches_cwd(path: &Path, cwd: &Path) -> bool {
+    let Ok(file) = fs::File::open(path) else {
+        return false;
+    };
+    BufReader::new(file).lines().take(30).flatten().any(|line| {
+        serde_json::from_str::<serde_json::Value>(&line)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("cwd")
+                    .and_then(|entry| entry.as_str())
+                    .map(str::to_string)
+            })
+            .map(|history_cwd| Path::new(&history_cwd) == cwd)
+            .unwrap_or(false)
+    })
+}
+
 fn find_latest_codex_rollout_path_for_current_dir() -> Option<PathBuf> {
     let current_dir = env::current_dir().ok()?;
     find_latest_codex_rollout_path_for_cwd(&current_dir)
@@ -580,6 +1031,116 @@ fn rollout_matches_cwd(path: &Path, cwd: &Path) -> bool {
         .and_then(|entry| entry.as_str())
         .map(|rollout_cwd| Path::new(rollout_cwd) == cwd)
         .unwrap_or(false)
+}
+
+fn claude_history_items_from_jsonl_line(line: &str) -> Vec<SessionHistoryItem> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return Vec::new();
+    };
+    let entry_type = value
+        .get("type")
+        .and_then(|entry| entry.as_str())
+        .unwrap_or("");
+    if entry_type != "user" && entry_type != "assistant" {
+        return Vec::new();
+    }
+
+    let timestamp = value
+        .get("timestamp")
+        .and_then(|entry| entry.as_str())
+        .unwrap_or("")
+        .to_string();
+    let role = if entry_type == "user" {
+        "user"
+    } else {
+        "assistant"
+    };
+    let title = if entry_type == "user" {
+        "你"
+    } else {
+        "Claude"
+    };
+    let Some(content) = value
+        .get("message")
+        .and_then(|message| message.get("content"))
+    else {
+        return Vec::new();
+    };
+
+    if let Some(text) = content.as_str() {
+        return claude_text_history_item(role, title, text, &timestamp)
+            .into_iter()
+            .collect();
+    }
+
+    content
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|block| claude_content_block_history_item(block, role, title, &timestamp))
+        .collect()
+}
+
+fn claude_content_block_history_item(
+    block: &serde_json::Value,
+    role: &str,
+    title: &str,
+    timestamp: &str,
+) -> Option<SessionHistoryItem> {
+    match block.get("type").and_then(|entry| entry.as_str())? {
+        "text" => claude_text_history_item(
+            role,
+            title,
+            block
+                .get("text")
+                .and_then(|entry| entry.as_str())
+                .unwrap_or(""),
+            timestamp,
+        ),
+        "tool_use" => {
+            let name = block
+                .get("name")
+                .and_then(|entry| entry.as_str())
+                .unwrap_or("工具");
+            let detail = block
+                .get("input")
+                .filter(|entry| !entry.is_null())
+                .and_then(|entry| serde_json::to_string_pretty(entry).ok())
+                .map(|entry| compact_detail(&entry))
+                .unwrap_or_default();
+            Some(SessionHistoryItem {
+                role: "tool".into(),
+                kind: "command".into(),
+                title: name.to_string(),
+                message: format!("调用 {name}"),
+                detail,
+                status: "completed".into(),
+                timestamp: timestamp.to_string(),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn claude_text_history_item(
+    role: &str,
+    title: &str,
+    text: &str,
+    timestamp: &str,
+) -> Option<SessionHistoryItem> {
+    let message = compact_history_message(text);
+    if message.trim().is_empty() {
+        return None;
+    }
+    Some(SessionHistoryItem {
+        role: role.into(),
+        kind: "message".into(),
+        title: title.into(),
+        message,
+        detail: String::new(),
+        status: String::new(),
+        timestamp: timestamp.into(),
+    })
 }
 
 fn history_item_from_jsonl_line(line: &str) -> Option<SessionHistoryItem> {
@@ -874,7 +1435,10 @@ fn detect_sessions() -> Vec<IslandSession> {
     sessions
 }
 
-fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, processes: Vec<RunningProcess>) {
+fn append_codex_cli_process_sessions(
+    sessions: &mut Vec<IslandSession>,
+    processes: Vec<RunningProcess>,
+) {
     let context = latest_codex_cli_context(sessions);
     let active_codex_cli_sessions = sessions
         .iter()
@@ -895,7 +1459,10 @@ fn append_codex_cli_process_sessions(sessions: &mut Vec<IslandSession>, processe
     }
 }
 
-fn limit_codex_cli_island_sessions(sessions: &mut Vec<IslandSession>, codex_cli_process_count: usize) {
+fn limit_codex_cli_island_sessions(
+    sessions: &mut Vec<IslandSession>,
+    codex_cli_process_count: usize,
+) {
     if codex_cli_process_count == 0 {
         return;
     }
@@ -1516,7 +2083,12 @@ fn resolve_approval_for_session(id: &str) -> Result<String, String> {
         .ok_or_else(|| "没有找到可审批的真实 hook 会话".to_string())?;
 
     write_session_allow(&provider, &session_id)?;
-    write_approval_decision_value(&provider, &session_id, "approve_session", "Allowed for this session from Phoenix Pet")?;
+    write_approval_decision_value(
+        &provider,
+        &session_id,
+        "approve_session",
+        "Allowed for this session from Phoenix Pet",
+    )?;
     update_bridge_session(&provider, &session_id, |session| {
         session.needs_approval = false;
         session.needs_input = false;
@@ -1675,7 +2247,8 @@ fn write_session_allow(provider: &str, session_id: &str) -> Result<(), String> {
     }
     let contents = serde_json::to_string_pretty(&allows)
         .map_err(|error| format!("无法序列化会话允许状态：{error}"))?;
-    fs::write(path, format!("{contents}\n")).map_err(|error| format!("无法写入会话允许状态：{error}"))
+    fs::write(path, format!("{contents}\n"))
+        .map_err(|error| format!("无法写入会话允许状态：{error}"))
 }
 
 fn decision_file_stem(session_id: &str) -> String {
@@ -1815,7 +2388,9 @@ fn process_cwd_cached(pid: &str) -> Option<String> {
     let cwd = process_cwd(pid)?;
     if let Ok(mut cache) = PROCESS_CWD_CACHE.lock() {
         cache.insert(pid.to_string(), (cwd.clone(), now));
-        cache.retain(|_pid, (_cwd, cached_at)| now.saturating_sub(*cached_at) <= PROCESS_CWD_CACHE_TTL_MS);
+        cache.retain(|_pid, (_cwd, cached_at)| {
+            now.saturating_sub(*cached_at) <= PROCESS_CWD_CACHE_TTL_MS
+        });
     }
     Some(cwd)
 }
@@ -1861,10 +2436,7 @@ fn process_line_is_codex_cli(line: &str) -> bool {
 
     let parts = args.split_whitespace().collect::<Vec<_>>();
     parts.iter().enumerate().any(|(index, part)| {
-        let Some(name) = Path::new(part)
-            .file_name()
-            .and_then(|value| value.to_str())
-        else {
+        let Some(name) = Path::new(part).file_name().and_then(|value| value.to_str()) else {
             return false;
         };
 
@@ -2062,13 +2634,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             approve_session,
             approve_session_for_session,
+            get_chat_api_config,
             import_pet_asset,
             list_integrations,
             list_session_history,
             list_sessions,
             focus_session,
             quit_app,
-            reject_session
+            reject_session,
+            save_chat_api_config,
+            send_chat_message,
+            test_chat_api_config
         ])
         .setup(|app| {
             if let Ok(mut cached_sessions) = app.state::<AppState>().sessions.lock() {
@@ -2098,6 +2674,56 @@ mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
 
+    #[test]
+    fn chat_api_config_normalizes_values_and_preserves_existing_key() {
+        let config = normalize_chat_api_config(
+            ChatApiConfigInput {
+                enabled: true,
+                base_url: " https://example.com/v1/ ".into(),
+                api_key: Some(" ".into()),
+                model: " model-name ".into(),
+                system_prompt: " prompt ".into(),
+            },
+            "stored-secret",
+        )
+        .expect("valid config");
+
+        assert_eq!(config.base_url, "https://example.com/v1");
+        assert_eq!(config.api_key, "stored-secret");
+        assert_eq!(config.model, "model-name");
+        assert_eq!(config.system_prompt, "prompt");
+    }
+
+    #[test]
+    fn chat_api_config_rejects_invalid_base_url() {
+        let result = normalize_chat_api_config(
+            ChatApiConfigInput {
+                enabled: true,
+                base_url: "example.com/v1".into(),
+                api_key: None,
+                model: "model-name".into(),
+                system_prompt: String::new(),
+            },
+            "",
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn chat_stream_line_extracts_delta_and_model() {
+        let line = r#"data: {"model":"vision-model","choices":[{"delta":{"content":"你好"}}]}"#;
+        let chunk = chat_stream_chunk_from_line(line)
+            .expect("valid stream line")
+            .expect("stream chunk");
+
+        assert_eq!(chunk.0, "你好");
+        assert_eq!(chunk.1, "vision-model");
+        assert!(chat_stream_chunk_from_line("data: [DONE]")
+            .expect("done line")
+            .is_none());
+    }
+
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
@@ -2123,8 +2749,47 @@ mod tests {
         assert_eq!(item.kind, "patch");
         assert_eq!(item.title, "代码修改");
         assert_eq!(item.message, "/tmp/project/src/main.js");
-        assert!(item.detail.contains("*** Update File: /tmp/project/src/main.js"));
+        assert!(item
+            .detail
+            .contains("*** Update File: /tmp/project/src/main.js"));
         assert_eq!(item.status, "completed");
+    }
+
+    #[test]
+    fn claude_history_includes_text_and_tool_calls() {
+        let text_line = serde_json::json!({
+            "type": "assistant",
+            "timestamp": "2026-06-06T14:12:46.351Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "我会检查当前实现。"}]
+            }
+        })
+        .to_string();
+        let tool_line = serde_json::json!({
+            "type": "assistant",
+            "timestamp": "2026-06-06T14:12:46.900Z",
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "Read",
+                    "input": {"file_path": "/tmp/project/src/main.js"}
+                }]
+            }
+        })
+        .to_string();
+
+        let text_items = claude_history_items_from_jsonl_line(&text_line);
+        assert_eq!(text_items.len(), 1);
+        assert_eq!(text_items[0].title, "Claude");
+        assert_eq!(text_items[0].message, "我会检查当前实现。");
+
+        let tool_items = claude_history_items_from_jsonl_line(&tool_line);
+        assert_eq!(tool_items.len(), 1);
+        assert_eq!(tool_items[0].role, "tool");
+        assert_eq!(tool_items[0].title, "Read");
+        assert!(tool_items[0].detail.contains("/tmp/project/src/main.js"));
     }
 
     fn temp_root() -> PathBuf {
@@ -2432,8 +3097,12 @@ mod tests {
         assert_eq!(visible[0].session_id, "approval-session");
         assert_eq!(visible[1].session_id, "input-session");
         assert_eq!(visible[2].session_id, "current-0");
-        assert!(visible.iter().any(|session| session.session_id == "current-0"));
-        assert!(!visible.iter().any(|session| session.session_id == "history-6"));
+        assert!(visible
+            .iter()
+            .any(|session| session.session_id == "current-0"));
+        assert!(!visible
+            .iter()
+            .any(|session| session.session_id == "history-6"));
         assert!(!visible
             .iter()
             .any(|session| session.session_id == "failed-session"));
@@ -2604,7 +3273,9 @@ mod tests {
         limit_codex_cli_island_sessions(&mut sessions, 3);
 
         assert_eq!(sessions.len(), 3);
-        assert!(sessions.iter().any(|session| session.id == "bridge:codex:approval"));
+        assert!(sessions
+            .iter()
+            .any(|session| session.id == "bridge:codex:approval"));
         assert!(!sessions
             .iter()
             .any(|session| session.id == "process:codex-cli:2"));
