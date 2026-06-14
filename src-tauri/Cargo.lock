@@ -2809,7 +2809,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "phoenix-pet-ping-island"
+name = "phoenix-pet"
 version = "0.1.0"
 dependencies = [
  "futures-util",

@@ -1,10 +1,10 @@
 [package]
-name = "phoenix-pet-ping-island"
+name = "phoenix-pet"
 version = "0.1.0"
-description = "A Tauri recreation of Ping Island"
+description = "A Tauri recreation of Phoenix Pet"
 authors = ["phoenixicarus"]
 edition = "2021"
-default-run = "phoenix-pet-ping-island"
+default-run = "phoenix-pet"
 
 [build-dependencies]
 tauri-build = { version = "2.6.0", features = [] }
