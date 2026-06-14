@@ -6,6 +6,7 @@ export const defaultUserSettings = {
   showBadge: true,
   showStatus: true,
   currentPetId: "tuxie",
+  userAvatar: "",
   importedPets: [],
   renamedPets: {},
   ...defaultAppearanceSettings,
@@ -61,6 +62,9 @@ export function normalizeUserSettings(settings = {}) {
     showBadge: input.showBadge ?? defaultUserSettings.showBadge,
     showStatus: input.showStatus ?? defaultUserSettings.showStatus,
     currentPetId: input.currentPetId || "tuxie",
+    userAvatar: typeof input.userAvatar === "string" && input.userAvatar.startsWith("data:image/")
+      ? input.userAvatar.slice(0, 3_000_000)
+      : "",
     importedPets: Array.isArray(input.importedPets)
       ? input.importedPets.map(normalizePet).filter(Boolean)
       : [],

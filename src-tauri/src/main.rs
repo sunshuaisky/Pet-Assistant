@@ -1445,7 +1445,10 @@ fn append_codex_cli_process_sessions(
         .filter(|session| {
             session.provider == "codex"
                 && session.kind == "Codex CLI"
-                && matches!(session.phase.as_str(), "approval" | "input" | "processing")
+                && matches!(
+                    session.phase.as_str(),
+                    "approval" | "input" | "processing" | "completed"
+                )
         })
         .count();
 
@@ -1743,11 +1746,16 @@ fn bridge_codex_session_should_show(
 ) -> bool {
     session.needs_approval
         || session.needs_input
-        || (bridge_session_is_processing(session) && bridge_session_recently_active(session))
+        || ((bridge_session_is_processing(session) || bridge_session_is_completed(session))
+            && bridge_session_recently_active(session))
 }
 
 fn bridge_session_is_processing(session: &BridgeSession) -> bool {
     matches!(session.phase.as_str(), "working" | "started" | "progress")
+}
+
+fn bridge_session_is_completed(session: &BridgeSession) -> bool {
+    matches!(session.phase.as_str(), "done" | "completed")
 }
 
 fn bridge_session_recently_active(session: &BridgeSession) -> bool {
@@ -2350,8 +2358,14 @@ fn running_processes(integration_id: &str, include_cwd: bool) -> Vec<RunningProc
 }
 
 fn process_line_matches_definition(line: &str, definition: &IntegrationDefinition) -> bool {
+    if definition.id == "codex" {
+        return process_line_is_codex_app(line);
+    }
     if definition.id == "codex-cli" {
         return process_line_is_codex_cli(line);
+    }
+    if definition.id == "claude" {
+        return process_line_is_claude(line);
     }
 
     let line = line.to_lowercase();
@@ -2359,6 +2373,28 @@ fn process_line_matches_definition(line: &str, definition: &IntegrationDefinitio
         .process_patterns
         .iter()
         .any(|pattern| line.contains(&pattern.to_lowercase()))
+}
+
+fn process_line_is_claude(line: &str) -> bool {
+    let args = parse_running_process(line)
+        .map(|process| process.args)
+        .unwrap_or_else(|| line.trim().to_string());
+    let executable = args.split_whitespace().next().unwrap_or_default();
+    let exec_lower = executable.to_lowercase();
+    exec_lower == "claude"
+        || exec_lower.ends_with("/claude")
+        || exec_lower.contains("claude-code")
+        || exec_lower.contains("@anthropic-ai/claude-code")
+}
+
+fn process_line_is_codex_app(line: &str) -> bool {
+    let args = parse_running_process(line)
+        .map(|process| process.args)
+        .unwrap_or_else(|| line.trim().to_string());
+    let executable = args.split_whitespace().next().unwrap_or_default();
+    executable
+        .to_lowercase()
+        .ends_with("/codex.app/contents/macos/codex")
 }
 
 fn parse_running_process(line: &str) -> Option<RunningProcess> {
@@ -2490,7 +2526,12 @@ fn integration_definitions() -> Vec<IntegrationDefinition> {
             app_name: None,
             bundle_id: None,
             app_paths: &[],
-            process_patterns: &[" claude ", "/claude "],
+            process_patterns: &[
+                "claude-code",
+                " claude ",
+                "/claude ",
+                "@anthropic-ai/claude-code",
+            ],
         },
         IntegrationDefinition {
             id: "gemini",
@@ -2954,6 +2995,17 @@ mod tests {
     }
 
     #[test]
+    fn codex_app_process_match_excludes_background_app_server() {
+        assert!(process_line_is_codex_app(
+            "125 /Applications/Codex.app/Contents/MacOS/Codex"
+        ));
+        assert!(!process_line_is_codex_app(
+            "126 /Applications/Codex.app/Contents/Resources/codex app-server"
+        ));
+        assert!(!process_line_is_codex_app("127 /usr/local/bin/codex"));
+    }
+
+    #[test]
     fn codex_cli_process_session_uses_project_context_as_title() {
         let mut context = sample_session("context-session");
         context.project_name = "Phoenix-Pet".into();
@@ -3279,5 +3331,36 @@ mod tests {
         assert!(!sessions
             .iter()
             .any(|session| session.id == "process:codex-cli:2"));
+    }
+
+    #[test]
+    fn completed_codex_hook_session_prevents_processing_fallback() {
+        let mut sessions = vec![IslandSession {
+            id: "bridge:codex:completed".into(),
+            session_id: "completed".into(),
+            provider: "codex".into(),
+            title: "Completed".into(),
+            project: "Project".into(),
+            kind: "Codex CLI".into(),
+            phase: "completed".into(),
+            message: "Completed".into(),
+            updated_at: "刚刚".into(),
+            cwd: "/tmp/project".into(),
+            source: "hook".into(),
+            needs_approval: false,
+            needs_input: false,
+        }];
+
+        append_codex_cli_process_sessions(
+            &mut sessions,
+            vec![RunningProcess {
+                pid: "123".into(),
+                args: "/usr/local/bin/codex".into(),
+                cwd: Some("/tmp/project".into()),
+            }],
+        );
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].phase, "completed");
     }
 }

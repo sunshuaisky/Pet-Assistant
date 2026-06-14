@@ -75,6 +75,7 @@ const CHAT_STORAGE_KEY = "phoenix-pet-chat";
 const EMPTY_HISTORY = [];
 const MAX_CHAT_IMAGES = 4;
 const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_USER_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const builtInPets = [
   {
@@ -969,6 +970,15 @@ function renderChat() {
         text: `我是 ${pet.name}。你可以像 ChatGPT 一样和我连续对话，也可以问我当前工具状态。`,
         timestamp: new Date().toISOString(),
       }];
+  const visibleMessages = state.chatSending && !state.chatStreamMessageId
+    ? [...messages, {
+        id: "chat-thinking",
+        role: "assistant",
+        text: "",
+        thinking: true,
+        timestamp: new Date().toISOString(),
+      }]
+    : messages;
   return `
     <section class="view chat active" data-view="chat">
       <aside class="sidebar">
@@ -1003,7 +1013,7 @@ function renderChat() {
       <section class="chat-main">
         <div class="chat-title">${escapeHtml(pet.name)} Chat</div>
         <div class="messages" aria-live="polite">
-          ${messages.map(renderChatMessage).join("")}
+          ${visibleMessages.map(renderChatMessage).join("")}
         </div>
         <form class="composer" data-chat-form>
           ${state.chatAttachments.length ? `
@@ -1050,6 +1060,19 @@ function formatShortTime(iso) {
 function renderChatMessage(message) {
   const pet = currentPet();
   const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : "";
+  if (message.thinking) {
+    return `
+      <article class="message thinking">
+        ${renderMiniAvatar(pet)}
+        <div class="message-body">
+          <span class="time">${time}</span>
+          <div class="bubble" aria-label="正在思考">
+            <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </div>
+        </div>
+      </article>
+    `;
+  }
   if (message.role === "user") {
     return `
       <article class="message user">
@@ -1057,7 +1080,7 @@ function renderChatMessage(message) {
           <span class="time">${time}</span>
           <div class="bubble"><p>${escapeHtml(message.text)}</p></div>
         </div>
-        <span class="person">●</span>
+        ${renderUserAvatar()}
       </article>
     `;
   }
@@ -1070,6 +1093,12 @@ function renderChatMessage(message) {
       </div>
     </article>
   `;
+}
+
+function renderUserAvatar(className = "person") {
+  const avatar = state.userSettings.userAvatar;
+  if (avatar) return `<span class="${className} user-avatar"><img src="${avatar}" alt="用户头像" /></span>`;
+  return `<span class="${className} default-user-avatar" aria-label="默认用户头像"><i></i></span>`;
 }
 
 function renderMonitor() {
@@ -1454,7 +1483,7 @@ function renderSettingsPanel(id) {
       <div class="integration-list">
         ${state.integrations.map(renderIntegrationRow).join("")}
       </div>
-      <div class="settings-actions">
+      <div class="settings-actions integrations-actions">
         <button class="primary" type="button" data-setting-action="refresh-integrations">刷新集成状态</button>
       </div>
       <p class="setting-caption">当前集成会检测本机应用/CLI 是否安装和运行；桌面应用可以跳回，CLI 目前只能检测进程，还不能定位到具体终端窗口。</p>
@@ -1467,6 +1496,18 @@ function renderSettingsPanel(id) {
     </div>
     ${renderSettingToggle("显示会话徽标", "showBadge", "在宠物旁标记待审批或运行中的会话数量。")}
     ${renderSettingToggle("显示状态标签", "showStatus", "保留一个短标签，方便扫一眼知道当前状态。")}
+    <div class="setting-row avatar-setting">
+      <span>
+        <strong>用户头像</strong>
+        <p>用于聊天中的用户消息，支持 PNG、JPEG、WEBP 或 GIF。</p>
+      </span>
+      <div class="avatar-setting-actions">
+        ${renderUserAvatar("avatar-setting-preview")}
+        <input data-user-avatar-input type="file" accept="image/*" hidden />
+        <button type="button" data-setting-action="upload-user-avatar">更换</button>
+        <button type="button" data-setting-action="reset-user-avatar" ${state.userSettings.userAvatar ? "" : "disabled"}>恢复默认</button>
+      </div>
+    </div>
     <div class="settings-actions">
       <button class="primary" type="button" data-setting-action="reset-position">重置到右下角</button>
     </div>
@@ -2263,6 +2304,16 @@ document.addEventListener("click", async (event) => {
     render();
     return;
   }
+  if (target.dataset.settingAction === "upload-user-avatar") {
+    document.querySelector("[data-user-avatar-input]")?.click();
+    return;
+  }
+  if (target.dataset.settingAction === "reset-user-avatar") {
+    state.userSettings.userAvatar = "";
+    saveUserSettings();
+    render();
+    return;
+  }
   if (target.dataset.settingAction === "save-chat-api") {
     await saveChatApiSettings();
     return;
@@ -2314,6 +2365,19 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.dataset?.userAvatarInput !== undefined) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file?.type?.startsWith("image/") || file.size > MAX_USER_AVATAR_BYTES) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.userSettings.userAvatar = String(reader.result || "");
+      saveUserSettings();
+      render();
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
   if (event.target.dataset?.chatImageInput !== undefined) {
     addChatImages(event.target.files || []);
     event.target.value = "";
