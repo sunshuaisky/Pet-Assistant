@@ -4,6 +4,7 @@ import tuxiePlayBall16 from "./assets/pets/tuxie/play-ball-16.webp";
 import tuxiePlayWand16 from "./assets/pets/tuxie/play-wand-16.webp";
 import tuxieSleeping16 from "./assets/pets/tuxie/sleeping-16.webp";
 import tuxieSpritesheet from "./assets/pets/tuxie/spritesheet.webp";
+import defaultUserAvatar from "./assets/default-touxiang.jpg";
 import {
   appendChatMessageToState,
   computeTheme,
@@ -80,7 +81,7 @@ const MAX_USER_AVATAR_BYTES = 2 * 1024 * 1024;
 const builtInPets = [
   {
     id: "tuxie",
-    name: "Tuxie",
+    name: "四月",
     kind: "atlas",
     source: "built-in",
     src: tuxieSpritesheet,
@@ -890,6 +891,18 @@ function selectChatConversation(id) {
   saveChatState();
 }
 
+function deleteChatConversation(id) {
+  const conversations = state.chatState.conversations;
+  if (conversations.length <= 1) return;
+  const index = conversations.findIndex((c) => c.id === id);
+  if (index === -1) return;
+  conversations.splice(index, 1);
+  if (state.chatState.selectedConversationId === id) {
+    state.chatState.selectedConversationId = conversations[Math.min(index, conversations.length - 1)].id;
+  }
+  saveChatState();
+}
+
 function petChatReply(text) {
   const session = selectedSession();
   const lower = text.toLowerCase();
@@ -1011,7 +1024,6 @@ function renderChat() {
         </div>
       </aside>
       <section class="chat-main">
-        <div class="chat-title">${escapeHtml(pet.name)} Chat</div>
         <div class="messages" aria-live="polite">
           ${visibleMessages.map(renderChatMessage).join("")}
         </div>
@@ -1098,7 +1110,7 @@ function renderChatMessage(message) {
 function renderUserAvatar(className = "person") {
   const avatar = state.userSettings.userAvatar;
   if (avatar) return `<span class="${className} user-avatar"><img src="${avatar}" alt="用户头像" /></span>`;
-  return `<span class="${className} default-user-avatar" aria-label="默认用户头像"><i></i></span>`;
+  return `<span class="${className} default-user-avatar user-avatar"><img src="${defaultUserAvatar}" alt="默认用户头像" /></span>`;
 }
 
 function renderMonitor() {
@@ -1505,11 +1517,10 @@ function renderSettingsPanel(id) {
         ${renderUserAvatar("avatar-setting-preview")}
         <input data-user-avatar-input type="file" accept="image/*" hidden />
         <button type="button" data-setting-action="upload-user-avatar">更换</button>
-        <button type="button" data-setting-action="reset-user-avatar" ${state.userSettings.userAvatar ? "" : "disabled"}>恢复默认</button>
       </div>
     </div>
-    <div class="settings-actions">
-      <button class="primary" type="button" data-setting-action="reset-position">重置到右下角</button>
+    <div class="settings-actions display-actions">
+      <button class="primary display-reset-button" type="button" data-setting-action="reset-position">重置到右下角</button>
     </div>
   `;
 }
@@ -2432,6 +2443,13 @@ document.addEventListener("pointermove", handlePetPointerMove);
 document.addEventListener("pointerup", handlePetPointerUp);
 document.addEventListener("pointercancel", handlePetPointerUp);
 document.addEventListener("contextmenu", (event) => {
+  const chatItem = event.target.closest?.("[data-chat-select]");
+  if (chatItem) {
+    event.preventDefault();
+    deleteChatConversation(chatItem.dataset.chatSelect);
+    render();
+    return;
+  }
   if (!event.target.closest?.(".pet-trigger")) return;
   event.preventDefault();
   state.actionMenuOpen = !state.actionMenuOpen;

@@ -908,17 +908,6 @@ button { border: 0; color: inherit; cursor: pointer; }
   white-space: pre-wrap;
 }
 
-.history-item.tool::before {
-  content: "";
-  position: absolute;
-  inset: 8px auto auto 8px;
-  width: 7px; height: 7px;
-  border-radius: 999px;
-  background: oklch(0.74 0.12 235);
-}
-.history-item.failed::before,
-.history-item.error::before { background: var(--danger); }
-.history-item.command::before { background: var(--warning); }
 
 .patch-detail { padding: 7px 0 8px; background: var(--code-surface-deep); line-height: 1.3; }
 .patch-line { display: block; min-height: 1.3em; padding: 2px 12px 2px 14px; color: var(--code-text); font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
@@ -1055,7 +1044,7 @@ button { border: 0; color: inherit; cursor: pointer; }
 /* ---- Chat Main ---- */
 .chat-main {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   min-height: 0;
   padding: 18px;
@@ -1197,32 +1186,20 @@ button { border: 0; color: inherit; cursor: pointer; }
 .avatar-setting-preview img { width: 100%; height: 100%; object-fit: cover; }
 
 .default-user-avatar {
-  position: relative;
   overflow: hidden;
   border-radius: 50%;
   background: var(--raised);
-}
-.default-user-avatar::before {
-  position: absolute;
-  top: 5px; left: 50%;
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-  transform: translateX(-50%);
-  content: "";
-}
-.default-user-avatar::after {
-  position: absolute;
-  left: 50%; bottom: 3px;
-  width: 16px; height: 8px;
-  border-radius: 9px 9px 4px 4px;
-  background: var(--muted);
-  transform: translateX(-50%);
-  content: "";
+  box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.28);
 }
 
 .avatar-setting { grid-template-columns: minmax(0, 1fr) auto; }
-.avatar-setting-actions { display: flex; align-items: center; gap: 7px; }
+.avatar-setting p { white-space: nowrap; }
+.avatar-setting-actions {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  gap: 7px;
+}
 .avatar-setting-preview {
   display: block;
   width: 34px; height: 34px;
@@ -1452,13 +1429,14 @@ button { border: 0; color: inherit; cursor: pointer; }
   gap: 12px;
   align-items: center;
   min-height: 44px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
 .setting-row.compact { grid-template-columns: minmax(0, 1fr) auto; }
 
 .setting-row label,
 .setting-row strong { color: var(--strong); font-size: 13px; font-weight: 760; }
-.setting-row p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.setting-row p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 
 /* ---- Triple (segmented control) ---- */
 .triple {
@@ -1703,6 +1681,7 @@ button { border: 0; color: inherit; cursor: pointer; }
 .setting-caption { margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .settings-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 .integrations-actions { justify-content: flex-end; }
+.display-actions { justify-content: flex-end; }
 .settings-actions button {
   min-height: 34px;
   padding: 0 12px;
@@ -1714,6 +1693,11 @@ button { border: 0; color: inherit; cursor: pointer; }
   cursor: pointer;
 }
 .settings-actions button.primary { background: var(--accent); color: oklch(0.98 0.006 253); }
+.settings-actions button.display-reset-button {
+  border-color: #409EFF;
+  background: #409EFF;
+  color: #fff;
+}
 .settings-actions button:disabled { cursor: wait; opacity: 0.52; }
 
 .api-config-form {
